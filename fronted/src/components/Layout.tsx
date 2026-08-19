@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '../lib/auth';
+import { useAuth, roleLabel } from '../lib/auth';
 import { useSchool } from '../lib/school';
 import { api } from '../lib/api';
 
@@ -109,12 +109,12 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         )}
         <header className="topbar">
-          <strong style={{ fontSize: 15 }}>{user?.fullName}</strong>
-          <span className="muted role">
-            {user?.role === 'admin' ? 'Administrator'
-              : user?.role === 'manager' ? 'Menejer'
-              : user?.role === 'teacher' ? "O'qituvchi" : 'Superadmin'}
-          </span>
+          {/* Ism — sozlamalarga kirish nuqtasi. Alohida menyu bandi qo'shilmadi:
+              pastki mobil menyu allaqachon 6 tagacha bandni ko'taryapti. */}
+          <NavLink to="/settings" className="user-link" title="Sozlamalar">
+            <strong style={{ fontSize: 15 }}>{user?.fullName}</strong>
+          </NavLink>
+          <span className="muted role">{roleLabel(user?.role)}</span>
           {isSuper && schoolId && <ActiveSchool />}
           <div className="spacer" />
           <ThemeToggle />

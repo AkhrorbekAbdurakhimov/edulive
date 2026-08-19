@@ -5,6 +5,7 @@ import { Layout } from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Schools from './pages/Schools';
+import Settings from './pages/Settings';
 import Students from './pages/Students';
 import StudentCard from './pages/StudentCard';
 import Attendance from './pages/Attendance';
@@ -24,6 +25,8 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/schools" element={<SuperadminOnly><Schools /></SuperadminOnly>} />
+                {/* Sozlamalar hamma rolga ochiq va maktab konteksti talab qilmaydi. */}
+                <Route path="/settings" element={<Settings />} />
                 <Route path="/dashboard" element={<NeedsSchool><Dashboard /></NeedsSchool>} />
                 <Route path="/students" element={<NeedsSchool><Students /></NeedsSchool>} />
                 <Route path="/students/:id" element={<NeedsSchool><StudentCard /></NeedsSchool>} />

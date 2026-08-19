@@ -34,6 +34,12 @@ input, select, textarea { font: inherit; color: var(--t1); }
   position: sticky; top: 0; z-index: 10;
 }
 .topbar .spacer { flex: 1; }
+/* Ism sozlamalarga olib boradi — matnday ko'rinadi, lekin bosiladigani bilinsin. */
+.topbar .user-link {
+  color: inherit; text-decoration: none; border-radius: 6px; padding: 3px 6px; margin-left: -6px;
+}
+.topbar .user-link:hover { background: var(--surface-3); }
+.topbar .user-link.active { background: var(--surface-3); }
 
 .page { padding: 24px; max-width: 1280px; width: 100%; margin: 0 auto; }
 .page h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }

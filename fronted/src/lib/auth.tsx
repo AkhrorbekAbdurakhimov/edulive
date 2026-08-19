@@ -14,6 +14,11 @@ interface AuthCtx {
   user: User | null;
   login: (phone: string, password: string) => Promise<void>;
   logout: () => void;
+  /**
+   * Parol o'zgartirilganda backend yangi token qaytaradi (token_version oshgan,
+   * eski token endi yaroqsiz). Uni saqlamasak joriy sessiya darhol uzilib qoladi.
+   */
+  setToken: (token: string) => void;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -39,7 +44,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  return <Ctx.Provider value={{ user, login, logout }}>{children}</Ctx.Provider>;
+  const setToken = (token: string) => localStorage.setItem('edulive_token', token);
+
+  return <Ctx.Provider value={{ user, login, logout, setToken }}>{children}</Ctx.Provider>;
+}
+
+/** Rol nomi foydalanuvchiga ko'rinadigan holda — bir necha ekranda kerak. */
+export function roleLabel(role: User['role'] | undefined): string {
+  switch (role) {
+    case 'admin': return 'Administrator';
+    case 'manager': return 'Menejer';
+    case 'teacher': return "O'qituvchi";
+    case 'superadmin': return 'Superadmin';
+    default: return '';
+  }
 }
 
 export function useAuth(): AuthCtx {
