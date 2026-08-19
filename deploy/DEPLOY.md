@@ -144,14 +144,42 @@ curl -F "url=https://edulive.uz/api/telegram/webhook" \
 ## 7. Zaxira nusxa (kunlik cron)
 
 ```bash
-0 3 * * * /opt/edulive/deploy/backup.sh >> /var/log/edulive-backup.log 2>&1
+15 3 * * * /opt/edulive/deploy/backup.sh >> /var/log/edulive-backup.log 2>&1
 ```
 
-`deploy/backup.sh` 14 kunlik nusxani saqlaydi. Kassly'ning o'z crontab yozuvi
-alohida qoladi — ikkalasi bir-biriga tegmaydi.
+`deploy/backup.sh` ikkita narsani oladi:
+
+1. **Baza** — `edulive_<sana>.sql.gz`
+2. **Yuklangan fayllar** — `edulive_uploads_<sana>.tar.gz` (maktab logotiplari
+   va keyinchalik qo'shiladigan boshqa rasmlar)
+
+Ikkalasi 14 kun saqlanadi. Tartib ataylab shunday: **avval baza, keyin
+fayllar**. Ular orasida yangi rasm yuklansa, u arxivga tushadi-yu bazada
+bo'lmaydi — zararsiz yetim fayl. Teskari tartibda bazada rasm bor, arxivda
+yo'q bo'lardi va tiklashdan keyin rasm ochilmasdi.
+
+Rasmlar kamdan-kam o'zgaradi, shuning uchun arxiv oldingisi bilan
+taqqoslanadi: bir xil bo'lsa yangisi o'chiriladi va eskisi qoldiriladi.
+Shu sababli fayl arxivlarida **eng yangisi 14 kundan oshsa ham o'chirilmaydi**
+— aks holda o'zgarmagan rasmlar zaxirasiz qolardi.
+
+### Tiklash
+
+```bash
+cd /opt/edulive
+
+# 1. Baza
+gunzip -c backups/edulive_<sana>.sql.gz |   docker compose -f docker-compose.prod.yml exec -T db psql -U edulive -d edulive
+
+# 2. Fayllar (uploads/ ustiga yoziladi)
+tar -xzf backups/edulive_uploads_<sana>.tar.gz -C /opt/edulive
+chown -R 1000:1000 uploads     # konteyner `node` (uid 1000) sifatida yozadi
+```
+
+Fayl arxivi bazadan yangiroq bo'lishi normal — ortiqcha rasm zarar qilmaydi.
 
 **Serverdan tashqari nusxa — hali sozlanmagan.** Hozir ikkala mahsulotning
-zaxirasi ham xuddi shu diskda yotibdi; server yo'qolsa ikkalasi ham ketadi.
+zaxirasi ham xuddi shu diskda; server yo'qolsa ikkalasi ham ketadi.
 `.env` ga bitta qator qo'shilsa yoqiladi:
 
 ```
@@ -159,7 +187,9 @@ BACKUP_REMOTE=u123456@u123456.your-storagebox.de:edulive-backups/
 ```
 
 Hetzner Storage Box (~€3/oy) yoki rsync qabul qiladigan istalgan host bo'ladi.
-Baza gzip'da 140 KB — hajm muammo emas, faqat manzil kerak.
+
+> **Diqqat:** kassly'ning `backup.sh` si hozircha faqat bazani oladi —
+> uning `uploads/` papkasi zaxiraga tushmaydi.
 
 ## 8. Orqaga qaytarish (rollback)
 
