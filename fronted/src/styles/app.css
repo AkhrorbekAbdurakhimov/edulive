@@ -88,6 +88,8 @@ input, select, textarea { font: inherit; color: var(--t1); }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field > label { font-size: 13px; font-weight: 500; color: var(--t2); }
 .field .hint { font-size: 12px; color: var(--crit-ink); }
+/* Tushuntirish matni — xato EMAS, shuning uchun qizil bo'lmaydi. */
+.field .help { font-size: 12px; color: var(--t3); }
 
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 639px) { .form-grid { grid-template-columns: 1fr; } }
@@ -188,8 +190,21 @@ table.tbl { width: 100%; border-collapse: collapse; }
     background: var(--surface); border-top: 1px solid var(--border);
     display: flex; justify-content: space-around; padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
   }
-  .mobile-nav .nav-item { flex-direction: column; gap: 2px; font-size: 11px; padding: 6px 10px; }
+  /* 6 tagacha band (superadmin: Maktablar + maktab bo'limlari) 390px ga sig'sin. */
+  .mobile-nav .nav-item { flex-direction: column; gap: 2px; font-size: 10px; padding: 6px 4px; min-width: 0; }
   .page { padding: 16px 16px 88px; }
   .tbl th { top: 0; }
+
+  /* Yuqori panel tor ekranda toshib ketmasin: rol matni tushib qoladi,
+     uzun nomlar uch nuqta bilan qisqaradi, tugmalar faqat ikonka bo'ladi. */
+  .topbar { padding: 0 12px; gap: 8px; }
+  .topbar .role { display: none; }
+  .topbar .btn .label { display: none; }
+  .topbar > strong, .topbar .school-name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+  }
+  .topbar > strong { max-width: 34vw; }
+  .topbar .chip { min-width: 0; max-width: 42vw; }
+  .topbar .school-name { display: inline-block; max-width: 100%; }
 }
 @media (min-width: 768px) { .mobile-nav { display: none; } }

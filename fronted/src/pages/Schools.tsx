@@ -1,0 +1,293 @@
+import { useState, type FormEvent } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { api, date } from '../lib/api';
+import { useSchool } from '../lib/school';
+import { EmptyState, ErrorState, Modal, TableSkeleton, schoolStatusChip } from '../components/ui';
+
+interface SchoolRow {
+  id: string;
+  name: string;
+  slug: string;
+  city: string | null;
+  plan: string;
+  status: string;
+  created_at: string;
+  student_count: number;
+  user_count: number;
+}
+
+const PLANS = [
+  { value: 'trial', label: 'Sinov' },
+  { value: 'standart', label: 'Standart' },
+  { value: 'pro', label: 'Pro' },
+];
+const planLabel = (p: string) => PLANS.find((x) => x.value === p)?.label ?? p;
+
+/** Maktab nomidan slug: backend `^[a-z0-9-]{2,40}$` ni talab qiladi. */
+function toSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[ʻʼ'"«»]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
+export default function Schools() {
+  const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState<SchoolRow | null>(null);
+  const { enter } = useSchool();
+  const navigate = useNavigate();
+
+  const schools = useQuery({
+    queryKey: ['schools'],
+    queryFn: async () => (await api.get<{ items: SchoolRow[] }>('/schools')).data.items,
+  });
+
+  // Maktabga kirish keshni tozalaydi, shuning uchun navigatsiya undan keyin.
+  const openSchool = (id: string) => { enter(id); navigate('/dashboard'); };
+
+  return (
+    <div className="page">
+      <div className="page-head">
+        <h1>Maktablar</h1>
+        {schools.data && <span className="muted num">{schools.data.length} ta</span>}
+        <div className="grow" />
+        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ Yangi maktab</button>
+      </div>
+
+      <div className="card table-wrap">
+        {schools.isPending ? (
+          <TableSkeleton />
+        ) : schools.isError ? (
+          <ErrorState error={schools.error} onRetry={() => schools.refetch()} />
+        ) : schools.data.length === 0 ? (
+          <EmptyState
+            icon="🏫"
+            title="Hali maktab yo'q"
+            text="Birinchi maktabni qo'shing — o'sha yerdayoq uning administratorini ham yaratsangiz bo'ladi."
+            action={<button className="btn btn-primary sm" onClick={() => setShowCreate(true)}>+ Yangi maktab</button>}
+          />
+        ) : (
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Maktab</th><th>Shahar</th><th>Tarif</th><th>Holat</th>
+                <th>O'quvchi</th><th>Xodim</th><th>Qo'shilgan</th><th aria-label="Amallar" />
+              </tr>
+            </thead>
+            <tbody>
+              {schools.data.map((s) => (
+                <tr key={s.id}>
+                  <td data-label="Maktab">
+                    <strong>{s.name}</strong>
+                    <div className="muted" style={{ fontSize: 12 }}>{s.slug}</div>
+                  </td>
+                  <td data-label="Shahar">{s.city ?? <span className="muted">—</span>}</td>
+                  <td data-label="Tarif">{planLabel(s.plan)}</td>
+                  <td data-label="Holat">{schoolStatusChip(s.status)}</td>
+                  <td data-label="O'quvchi" className="num">{s.student_count}</td>
+                  <td data-label="Xodim" className="num">{s.user_count}</td>
+                  <td data-label="Qo'shilgan" className="num">{date(s.created_at)}</td>
+                  <td data-label="Amallar">
+                    <div className="row">
+                      <button className="btn btn-secondary sm" onClick={() => setEditing(s)}>Tahrirlash</button>
+                      <button className="btn btn-primary sm" onClick={() => openSchool(s.id)}>Kirish</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {showCreate && <CreateSchoolModal onClose={() => setShowCreate(false)} />}
+      {editing && <EditSchoolModal school={editing} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+function CreateSchoolModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    name: '', slug: '', slugTouched: false, city: '', phone: '', tgCode: '', plan: 'standart',
+    adminName: '', adminPhone: '+998', adminPassword: '',
+  });
+  const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  // Slug nomdan o'zi to'ladi; foydalanuvchi tahrirlasa, avtomatik to'ldirish to'xtaydi.
+  const setName = (e: { target: { value: string } }) =>
+    setForm((f) => ({ ...f, name: e.target.value, slug: f.slugTouched ? f.slug : toSlug(e.target.value) }));
+
+  const create = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, unknown> = {
+        name: form.name.trim(),
+        slug: form.slug.trim(),
+        plan: form.plan,
+      };
+      if (form.city.trim()) body.city = form.city.trim();
+      if (form.phone.trim()) body.phone = form.phone.trim();
+      if (form.tgCode.trim()) body.tgCode = form.tgCode.trim();
+      if (form.adminName.trim()) {
+        body.admin = {
+          fullName: form.adminName.trim(),
+          phone: form.adminPhone.trim(),
+          password: form.adminPassword,
+        };
+      }
+      return (await api.post('/schools', body)).data;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['schools'] }); onClose(); },
+  });
+
+  const submit = (e: FormEvent) => { e.preventDefault(); create.mutate(); };
+  const errMsg = (create.error as any)?.response?.data?.error;
+
+  return (
+    <Modal title="Yangi maktab" onClose={onClose}>
+      <form onSubmit={submit}>
+        <div className="form-grid">
+          <div className="field">
+            <label>Maktab nomi</label>
+            <input className="input" value={form.name} onChange={setName} required minLength={2} />
+          </div>
+          <div className="field">
+            <label>Slug</label>
+            <input
+              className="input" value={form.slug} required pattern="[a-z0-9\-]{2,40}"
+              onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value, slugTouched: true }))}
+            />
+            <span className="help">Kichik lotin harflar, raqam va "-". Keyin o'zgartirib bo'lmaydi.</span>
+          </div>
+          <div className="field">
+            <label>Shahar</label>
+            <input className="input" value={form.city} onChange={set('city')} />
+          </div>
+          <div className="field">
+            <label>Telefon</label>
+            <input className="input" value={form.phone} onChange={set('phone')} inputMode="tel" />
+          </div>
+          <div className="field">
+            <label>Tarif</label>
+            <select className="input" value={form.plan} onChange={set('plan')}>
+              {PLANS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Telegram kodi</label>
+            <input className="input" value={form.tgCode} onChange={set('tgCode')} placeholder="bo'sh bo'lsa slug ishlatiladi" />
+            <span className="help">Ota-ona /start &lt;kod&gt; orqali maktabni topadi.</span>
+          </div>
+        </div>
+
+        <h3 style={{ marginTop: 18, marginBottom: 4, fontSize: 14 }}>Birinchi administrator</h3>
+        <p className="muted" style={{ marginTop: 0, marginBottom: 10, fontSize: 13 }}>
+          Ixtiyoriy. To'ldirsangiz, maktab shu zahoti ishlay boshlaydi — admin o'z telefoni bilan kiradi.
+        </p>
+        <div className="form-grid">
+          <div className="field">
+            <label>F.I.Sh</label>
+            <input className="input" value={form.adminName} onChange={set('adminName')} minLength={3} />
+          </div>
+          {form.adminName.trim() && (
+            <>
+              <div className="field">
+                <label>Telefon</label>
+                <input
+                  className="input" value={form.adminPhone} onChange={set('adminPhone')}
+                  inputMode="tel" required pattern="\+998[0-9]{9}"
+                />
+                <span className="help">+998XXXXXXXXX</span>
+              </div>
+              <div className="field">
+                <label>Parol</label>
+                <input
+                  className="input" value={form.adminPassword} onChange={set('adminPassword')}
+                  required minLength={8} autoComplete="new-password"
+                />
+                <span className="help">Kamida 8 belgi. Adminga yetkazing — u keyin o'zi o'zgartiradi.</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {errMsg && <p className="hint" style={{ marginTop: 10 }}>{errMsg}</p>}
+        <div className="actions">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Bekor qilish</button>
+          <button className="btn btn-primary" disabled={create.isPending}>
+            {create.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function EditSchoolModal({ school, onClose }: { school: SchoolRow; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    name: school.name, city: school.city ?? '', plan: school.plan, status: school.status,
+  });
+  const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const save = useMutation({
+    mutationFn: async () =>
+      (await api.patch(`/schools/${school.id}`, {
+        name: form.name.trim(),
+        city: form.city.trim(),
+        plan: form.plan,
+        status: form.status,
+      })).data,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['schools'] }); onClose(); },
+  });
+
+  const submit = (e: FormEvent) => { e.preventDefault(); save.mutate(); };
+  const errMsg = (save.error as any)?.response?.data?.error;
+
+  return (
+    <Modal title={school.name} onClose={onClose}>
+      <form onSubmit={submit}>
+        <div className="form-grid">
+          <div className="field">
+            <label>Maktab nomi</label>
+            <input className="input" value={form.name} onChange={set('name')} required minLength={2} />
+          </div>
+          <div className="field">
+            <label>Shahar</label>
+            <input className="input" value={form.city} onChange={set('city')} />
+          </div>
+          <div className="field">
+            <label>Tarif</label>
+            <select className="input" value={form.plan} onChange={set('plan')}>
+              {PLANS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Holat</label>
+            <select className="input" value={form.status} onChange={set('status')}>
+              <option value="active">Faol</option>
+              <option value="trial">Sinov</option>
+              <option value="suspended">To'xtatilgan</option>
+            </select>
+            <span className="help">"To'xtatilgan" maktab xodimlari tizimga kira olmaydi.</span>
+          </div>
+        </div>
+        <p className="muted" style={{ fontSize: 13 }}>
+          Slug <strong>{school.slug}</strong> — o'zgarmaydi, unga havolalar bog'langan.
+        </p>
+        {errMsg && <p className="hint" style={{ marginTop: 10 }}>{errMsg}</p>}
+        <div className="actions">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Bekor qilish</button>
+          <button className="btn btn-primary" disabled={save.isPending}>
+            {save.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}

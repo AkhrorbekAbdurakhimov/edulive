@@ -1,6 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
+import { useSchool } from '../lib/school';
+import { api } from '../lib/api';
 
 const NAV = [
   { to: '/dashboard', label: 'Boshqaruv', icon: '▦' },
@@ -9,6 +12,7 @@ const NAV = [
   { to: '/payments', label: "To'lovlar", icon: '₮' },
   { to: '/debtors', label: 'Qarzdorlar', icon: '!' },
 ];
+const SCHOOLS_NAV = { to: '/schools', label: 'Maktablar', icon: '🏫' };
 
 function useOnline(): boolean {
   const [online, setOnline] = useState(navigator.onLine);
@@ -34,18 +38,58 @@ function ThemeToggle() {
       onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
       aria-label="Mavzuni almashtirish"
     >
-      {theme === 'dark' ? '☀ Yorug\'' : '🌙 Qorong\'i'}
+      <span aria-hidden>{theme === 'dark' ? '☀' : '🌙'}</span>
+      <span className="label">{theme === 'dark' ? 'Yorug\'' : 'Qorong\'i'}</span>
     </button>
+  );
+}
+
+/**
+ * Superadmin qaysi maktab ichida ekanini doim ko'rib tursin — aks holda
+ * boshqa maktabning ma'lumotini o'zinikidek o'qib qolish oson.
+ */
+function ActiveSchool() {
+  const { schoolId, leave } = useSchool();
+  const navigate = useNavigate();
+
+  const schools = useQuery({
+    queryKey: ['schools'],
+    queryFn: async () => (await api.get<{ items: Array<{ id: string; name: string }> }>('/schools')).data.items,
+  });
+  const name = schools.data?.find((s) => s.id === schoolId)?.name;
+
+  return (
+    <span className="chip neutral" style={{ gap: 8 }}>
+      <span aria-hidden>🏫</span>
+      <span className="school-name">{name ?? 'Maktab'}</span>
+      <button
+        className="btn btn-ghost sm"
+        style={{ padding: '0 6px', minHeight: 'auto' }}
+        title="Maktabdan chiqib, platforma darajasiga qaytish"
+        onClick={() => { leave(); navigate('/schools'); }}
+      >
+        ✕
+      </button>
+    </span>
   );
 }
 
 export function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
+  const { schoolId } = useSchool();
   const navigate = useNavigate();
   const online = useOnline();
 
-  // O'qituvchi web'da faqat davomatni ko'radi; asosiy ish stoli — admin/menejer uchun
-  const nav = user?.role === 'teacher' ? NAV.filter((n) => n.to === '/attendance') : NAV;
+  const isSuper = user?.role === 'superadmin';
+
+  // O'qituvchi web'da faqat davomatni ko'radi; asosiy ish stoli — admin/menejer uchun.
+  // Superadmin esa maktab tanlamaguncha maktab ichidagi bo'limlarni ko'rmaydi:
+  // ular X-School-Id siz baribir "Maktab tanlanmagan" xatosini beradi.
+  const nav = user?.role === 'teacher'
+    ? NAV.filter((n) => n.to === '/attendance')
+    : isSuper
+      ? [SCHOOLS_NAV, ...(schoolId ? NAV : [])]
+      : NAV;
 
   return (
     <div className="shell">
@@ -66,11 +110,12 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
         <header className="topbar">
           <strong style={{ fontSize: 15 }}>{user?.fullName}</strong>
-          <span className="muted">
+          <span className="muted role">
             {user?.role === 'admin' ? 'Administrator'
               : user?.role === 'manager' ? 'Menejer'
               : user?.role === 'teacher' ? "O'qituvchi" : 'Superadmin'}
           </span>
+          {isSuper && schoolId && <ActiveSchool />}
           <div className="spacer" />
           <ThemeToggle />
           <button className="btn btn-ghost sm" onClick={() => { logout(); navigate('/login'); }}>

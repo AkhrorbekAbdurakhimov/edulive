@@ -34,6 +34,15 @@ export function attendanceChip(status: string) {
   }
 }
 
+export function schoolStatusChip(status: string) {
+  switch (status) {
+    case 'active': return <Chip kind="good">Faol</Chip>;
+    case 'trial': return <Chip kind="warn">Sinov</Chip>;
+    case 'suspended': return <Chip kind="crit">To'xtatilgan</Chip>;
+    default: return <Chip kind="neutral">{status}</Chip>;
+  }
+}
+
 /* Skeleton — to'liq sahifa spinneri TAQIQLANGAN (7-bo'lim). */
 export function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
