@@ -3,13 +3,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api, date } from '../lib/api';
 import { useSchool } from '../lib/school';
+import { REGIONS } from '../lib/regions';
 import { EmptyState, ErrorState, Modal, TableSkeleton, schoolStatusChip } from '../components/ui';
 
 interface SchoolRow {
   id: string;
   name: string;
   slug: string;
-  city: string | null;
+  region: string | null;
+  district: string | null;
+  address: string | null;
+  phone: string | null;
   plan: string;
   status: string;
   created_at: string;
@@ -73,7 +77,7 @@ export default function Schools() {
           <table className="tbl">
             <thead>
               <tr>
-                <th>Maktab</th><th>Shahar</th><th>Tarif</th><th>Holat</th>
+                <th>Maktab</th><th>Manzil</th><th>Tarif</th><th>Holat</th>
                 <th>O'quvchi</th><th>Xodim</th><th>Qo'shilgan</th><th aria-label="Amallar" />
               </tr>
             </thead>
@@ -84,7 +88,16 @@ export default function Schools() {
                     <strong>{s.name}</strong>
                     <div className="muted" style={{ fontSize: 12 }}>{s.slug}</div>
                   </td>
-                  <td data-label="Shahar">{s.city ?? <span className="muted">—</span>}</td>
+                  <td data-label="Manzil">
+                    {s.district || s.region ? (
+                      <>
+                        {s.district ?? <span className="muted">—</span>}
+                        {s.region && <div className="muted" style={{ fontSize: 12 }}>{s.region}</div>}
+                      </>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
                   <td data-label="Tarif">{planLabel(s.plan)}</td>
                   <td data-label="Holat">{schoolStatusChip(s.status)}</td>
                   <td data-label="O'quvchi" className="num">{s.student_count}</td>
@@ -112,7 +125,8 @@ export default function Schools() {
 function CreateSchoolModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
-    name: '', slug: '', slugTouched: false, city: '', phone: '', tgCode: '', plan: 'standart',
+    name: '', slug: '', slugTouched: false, region: '', district: '', address: '',
+    phone: '', tgCode: '', plan: 'standart',
     adminName: '', adminPhone: '+998', adminPassword: '',
   });
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
@@ -129,7 +143,9 @@ function CreateSchoolModal({ onClose }: { onClose: () => void }) {
         slug: form.slug.trim(),
         plan: form.plan,
       };
-      if (form.city.trim()) body.city = form.city.trim();
+      if (form.region) body.region = form.region;
+      if (form.district.trim()) body.district = form.district.trim();
+      if (form.address.trim()) body.address = form.address.trim();
       if (form.phone.trim()) body.phone = form.phone.trim();
       if (form.tgCode.trim()) body.tgCode = form.tgCode.trim();
       if (form.adminName.trim()) {
@@ -164,8 +180,19 @@ function CreateSchoolModal({ onClose }: { onClose: () => void }) {
             <span className="help">Kichik lotin harflar, raqam va "-". Keyin o'zgartirib bo'lmaydi.</span>
           </div>
           <div className="field">
-            <label>Shahar</label>
-            <input className="input" value={form.city} onChange={set('city')} />
+            <label>Viloyat</label>
+            <select className="input" value={form.region} onChange={set('region')}>
+              <option value="">Tanlanmagan</option>
+              {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Tuman / shahar</label>
+            <input className="input" value={form.district} onChange={set('district')} placeholder="Yunusobod tumani" />
+          </div>
+          <div className="field" style={{ gridColumn: '1 / -1' }}>
+            <label>Manzil</label>
+            <input className="input" value={form.address} onChange={set('address')} placeholder="Ko'cha, uy raqami" />
           </div>
           <div className="field">
             <label>Telefon</label>
@@ -230,7 +257,9 @@ function CreateSchoolModal({ onClose }: { onClose: () => void }) {
 function EditSchoolModal({ school, onClose }: { school: SchoolRow; onClose: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
-    name: school.name, city: school.city ?? '', plan: school.plan, status: school.status,
+    name: school.name, region: school.region ?? '', district: school.district ?? '',
+    address: school.address ?? '', phone: school.phone ?? '',
+    plan: school.plan, status: school.status,
   });
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -239,7 +268,10 @@ function EditSchoolModal({ school, onClose }: { school: SchoolRow; onClose: () =
     mutationFn: async () =>
       (await api.patch(`/schools/${school.id}`, {
         name: form.name.trim(),
-        city: form.city.trim(),
+        region: form.region,
+        district: form.district.trim(),
+        address: form.address.trim(),
+        phone: form.phone.trim(),
         plan: form.plan,
         status: form.status,
       })).data,
@@ -258,8 +290,23 @@ function EditSchoolModal({ school, onClose }: { school: SchoolRow; onClose: () =
             <input className="input" value={form.name} onChange={set('name')} required minLength={2} />
           </div>
           <div className="field">
-            <label>Shahar</label>
-            <input className="input" value={form.city} onChange={set('city')} />
+            <label>Viloyat</label>
+            <select className="input" value={form.region} onChange={set('region')}>
+              <option value="">Tanlanmagan</option>
+              {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label>Tuman / shahar</label>
+            <input className="input" value={form.district} onChange={set('district')} />
+          </div>
+          <div className="field" style={{ gridColumn: '1 / -1' }}>
+            <label>Manzil</label>
+            <input className="input" value={form.address} onChange={set('address')} placeholder="Ko'cha, uy raqami" />
+          </div>
+          <div className="field">
+            <label>Telefon</label>
+            <input className="input" value={form.phone} onChange={set('phone')} inputMode="tel" />
           </div>
           <div className="field">
             <label>Tarif</label>

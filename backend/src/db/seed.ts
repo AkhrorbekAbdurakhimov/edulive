@@ -70,13 +70,15 @@ async function seed() {
     // -------------------------------------------------------- maktab
     const school = (
       await db.query<{ id: string }>(
-        `INSERT INTO schools (name, slug, city, phone, tg_code, plan, status, settings)
-         VALUES ($1, $2, $3, $4, $5, 'standart', 'active', $6)
+        `INSERT INTO schools (name, slug, region, district, address, phone, tg_code, plan, status, settings)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'standart', 'active', $8)
          RETURNING id`,
         [
           '"Afsona" xususiy maktabi',
           'afsona',
-          'Toshkent',
+          'Toshkent shahri',
+          'Yunusobod tumani',
+          "Amir Temur ko'chasi, 108",
           '+998712000000',
           'afsona2026',
           JSON.stringify({ payment_due_day: PAYMENT_DUE_DAY, grading: { max_score: 100, period: 'weekly' } }),

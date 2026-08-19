@@ -18,7 +18,8 @@ schoolsPlatformRoutes.use(requireRole()); // faqat superadmin o'tadi (bo'sh ro'y
 const createSchoolSchema = z.object({
   name: z.string().min(2, "Maktab nomi kamida 2 belgidan iborat bo'lishi kerak"),
   slug: z.string().regex(/^[a-z0-9-]{2,40}$/, "Slug faqat kichik lotin harf, raqam va '-' dan iborat bo'ladi"),
-  city: z.string().optional(),
+  region: z.string().optional(),
+  district: z.string().optional(),
   phone: z.string().optional(),
   address: z.string().optional(),
   tgCode: z.string().min(3, "Telegram kodi kamida 3 belgi").optional(),
@@ -38,7 +39,7 @@ schoolsPlatformRoutes.get(
   '/',
   ah(async (_req, res) => {
     const { rows } = await pool.query(
-      `SELECT s.id, s.name, s.slug, s.city, s.plan, s.status, s.created_at,
+      `SELECT s.id, s.name, s.slug, s.region, s.district, s.address, s.phone, s.plan, s.status, s.created_at,
               (SELECT count(*)::int FROM students st WHERE st.school_id = s.id AND st.status = 'active') AS student_count,
               (SELECT count(*)::int FROM users u WHERE u.school_id = s.id AND u.is_active) AS user_count
          FROM schools s
@@ -58,13 +59,14 @@ schoolsPlatformRoutes.post(
 
     const school = await tx(async (client) => {
       const { rows } = await client.query<{ id: string }>(
-        `INSERT INTO schools (name, slug, city, phone, address, tg_code, plan, settings)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        `INSERT INTO schools (name, slug, region, district, phone, address, tg_code, plan, settings)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
          RETURNING id, name, slug, plan, status`,
         [
           input.name,
           input.slug,
-          input.city ?? null,
+          input.region ?? null,
+          input.district ?? null,
           input.phone ?? null,
           input.address ?? null,
           input.tgCode ?? input.slug,
@@ -98,7 +100,7 @@ schoolsPlatformRoutes.get(
   '/:id',
   ah(async (req, res) => {
     const { rows } = await pool.query(
-      `SELECT id, name, slug, city, phone, address, tg_code, plan, status, settings, created_at
+      `SELECT id, name, slug, region, district, phone, address, tg_code, plan, status, settings, created_at
          FROM schools WHERE id = $1`,
       [uuidParam(req)],
     );
@@ -109,7 +111,8 @@ schoolsPlatformRoutes.get(
 
 const patchSchoolSchema = z.object({
   name: z.string().min(2).optional(),
-  city: z.string().optional(),
+  region: z.string().optional(),
+  district: z.string().optional(),
   phone: z.string().optional(),
   address: z.string().optional(),
   plan: z.enum(['trial', 'standart', 'pro']).optional(),
@@ -128,19 +131,21 @@ schoolsPlatformRoutes.patch(
     const { rows } = await pool.query(
       `UPDATE schools SET
          name     = COALESCE($2, name),
-         city     = COALESCE($3, city),
-         phone    = COALESCE($4, phone),
-         address  = COALESCE($5, address),
-         plan     = COALESCE($6, plan),
-         status   = COALESCE($7, status),
-         settings = COALESCE($8, settings),
+         region   = COALESCE($3, region),
+         district = COALESCE($4, district),
+         phone    = COALESCE($5, phone),
+         address  = COALESCE($6, address),
+         plan     = COALESCE($7, plan),
+         status   = COALESCE($8, status),
+         settings = COALESCE($9, settings),
          updated_at = now()
        WHERE id = $1
        RETURNING id, name, slug, plan, status, settings`,
       [
         id,
         input.name ?? null,
-        input.city ?? null,
+        input.region ?? null,
+        input.district ?? null,
         input.phone ?? null,
         input.address ?? null,
         input.plan ?? null,
@@ -169,7 +174,7 @@ schoolRoutes.get(
   requireRole('admin', 'manager'),
   ah(async (req, res) => {
     const { rows } = await pool.query(
-      `SELECT id, name, slug, city, phone, address, tg_code, plan, status, settings
+      `SELECT id, name, slug, region, district, phone, address, tg_code, plan, status, settings
          FROM schools WHERE id = $1`,
       [req.schoolId],
     );
