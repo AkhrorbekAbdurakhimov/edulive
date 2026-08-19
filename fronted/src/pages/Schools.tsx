@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api, date } from '../lib/api';
 import { useSchool } from '../lib/school';
-import { REGIONS } from '../lib/regions';
+import { REGIONS, DISTRICTS } from '../lib/regions';
 import { EmptyState, ErrorState, Modal, TableSkeleton, schoolStatusChip } from '../components/ui';
 
 interface SchoolRow {
@@ -27,6 +27,16 @@ const PLANS = [
   { value: 'pro', label: 'Pro' },
 ];
 const planLabel = (p: string) => PLANS.find((x) => x.value === p)?.label ?? p;
+
+/**
+ * Tanlangan viloyatning tumanlari. Agar bazadagi joriy qiymat ro'yxatda
+ * bo'lmasa (eski yozuv yoki ro'yxat eskirgan), u birinchi variant sifatida
+ * qo'shiladi — aks holda tahrirlashda jimgina yo'qolib ketardi.
+ */
+function districtOptions(region: string, current: string): string[] {
+  const list = DISTRICTS[region] ?? [];
+  return current && !list.includes(current) ? [current, ...list] : list;
+}
 
 /** Maktab nomidan slug: backend `^[a-z0-9-]{2,40}$` ni talab qiladi. */
 function toSlug(name: string): string {
@@ -132,6 +142,11 @@ function CreateSchoolModal({ onClose }: { onClose: () => void }) {
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  // Viloyat almashsa tuman ham tozalanadi — aks holda boshqa viloyatning
+  // tumani saqlanib qolardi.
+  const setRegion = (e: { target: { value: string } }) =>
+    setForm((f) => ({ ...f, region: e.target.value, district: '' }));
+
   // Slug nomdan o'zi to'ladi; foydalanuvchi tahrirlasa, avtomatik to'ldirish to'xtaydi.
   const setName = (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, name: e.target.value, slug: f.slugTouched ? f.slug : toSlug(e.target.value) }));
@@ -181,14 +196,17 @@ function CreateSchoolModal({ onClose }: { onClose: () => void }) {
           </div>
           <div className="field">
             <label>Viloyat</label>
-            <select className="input" value={form.region} onChange={set('region')}>
+            <select className="input" value={form.region} onChange={setRegion}>
               <option value="">Tanlanmagan</option>
               {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
           <div className="field">
             <label>Tuman / shahar</label>
-            <input className="input" value={form.district} onChange={set('district')} placeholder="Yunusobod tumani" />
+            <select className="input" value={form.district} onChange={set('district')} disabled={!form.region}>
+              <option value="">{form.region ? 'Tanlanmagan' : 'Avval viloyatni tanlang'}</option>
+              {districtOptions(form.region, form.district).map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
           </div>
           <div className="field" style={{ gridColumn: '1 / -1' }}>
             <label>Manzil</label>
@@ -264,6 +282,10 @@ function EditSchoolModal({ school, onClose }: { school: SchoolRow; onClose: () =
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  // Viloyat almashsa tuman tozalanadi (yaratish formasidagi kabi).
+  const setRegion = (e: { target: { value: string } }) =>
+    setForm((f) => ({ ...f, region: e.target.value, district: '' }));
+
   const save = useMutation({
     mutationFn: async () =>
       (await api.patch(`/schools/${school.id}`, {
@@ -291,14 +313,17 @@ function EditSchoolModal({ school, onClose }: { school: SchoolRow; onClose: () =
           </div>
           <div className="field">
             <label>Viloyat</label>
-            <select className="input" value={form.region} onChange={set('region')}>
+            <select className="input" value={form.region} onChange={setRegion}>
               <option value="">Tanlanmagan</option>
               {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
           <div className="field">
             <label>Tuman / shahar</label>
-            <input className="input" value={form.district} onChange={set('district')} />
+            <select className="input" value={form.district} onChange={set('district')} disabled={!form.region}>
+              <option value="">{form.region ? 'Tanlanmagan' : 'Avval viloyatni tanlang'}</option>
+              {districtOptions(form.region, form.district).map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
           </div>
           <div className="field" style={{ gridColumn: '1 / -1' }}>
             <label>Manzil</label>
