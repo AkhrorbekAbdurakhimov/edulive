@@ -5,14 +5,21 @@ import { useAuth, roleLabel } from '../lib/auth';
 import { useSchool } from '../lib/school';
 import { api } from '../lib/api';
 
-const NAV = [
+interface NavItem { to: string; label: string; icon: string }
+
+const SCHOOL_NAV: NavItem[] = [
   { to: '/dashboard', label: 'Boshqaruv', icon: '▦' },
   { to: '/students', label: "O'quvchilar", icon: '👥' },
   { to: '/attendance', label: 'Davomat', icon: '✓' },
   { to: '/payments', label: "To'lovlar", icon: '₮' },
   { to: '/debtors', label: 'Qarzdorlar', icon: '!' },
+  { to: '/users', label: 'Xodimlar', icon: '🧑' },
 ];
-const SCHOOLS_NAV = { to: '/schools', label: 'Maktablar', icon: '🏫' };
+const SCHOOLS_NAV: NavItem = { to: '/schools', label: 'Maktablar', icon: '🏫' };
+const SETTINGS_NAV: NavItem = { to: '/settings', label: 'Sozlamalar', icon: '⚙' };
+
+/** Pastki mobil panelga shuncha band sig'adi; qolgani "Yana" varaqasiga tushadi. */
+const MOBILE_SLOTS = 4;
 
 function useOnline(): boolean {
   const [online, setOnline] = useState(navigator.onLine);
@@ -54,18 +61,21 @@ function ActiveSchool() {
 
   const schools = useQuery({
     queryKey: ['schools'],
-    queryFn: async () => (await api.get<{ items: Array<{ id: string; name: string }> }>('/schools')).data.items,
+    queryFn: async () =>
+      (await api.get<{ items: Array<{ id: string; name: string; logo_url: string | null }> }>('/schools')).data.items,
   });
-  const name = schools.data?.find((s) => s.id === schoolId)?.name;
+  const school = schools.data?.find((s) => s.id === schoolId);
 
   return (
-    <span className="chip neutral" style={{ gap: 8 }}>
-      <span aria-hidden>🏫</span>
-      <span className="school-name">{name ?? 'Maktab'}</span>
+    <span className="chip neutral active-school">
+      {school?.logo_url
+        ? <img className="chip-logo" src={school.logo_url} alt="" />
+        : <span aria-hidden>🏫</span>}
+      <span className="school-name">{school?.name ?? 'Maktab'}</span>
       <button
-        className="btn btn-ghost sm"
-        style={{ padding: '0 6px', minHeight: 'auto' }}
+        className="chip-x"
         title="Maktabdan chiqib, platforma darajasiga qaytish"
+        aria-label="Maktabdan chiqish"
         onClick={() => { leave(); navigate('/schools'); }}
       >
         ✕
@@ -74,32 +84,56 @@ function ActiveSchool() {
   );
 }
 
+function NavItems({ items, onClick }: { items: NavItem[]; onClick?: () => void }) {
+  return (
+    <>
+      {items.map((n) => (
+        <NavLink
+          key={n.to} to={n.to} onClick={onClick}
+          className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+        >
+          <span className="nav-icon" aria-hidden>{n.icon}</span>
+          <span>{n.label}</span>
+        </NavLink>
+      ))}
+    </>
+  );
+}
+
 export function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const { schoolId } = useSchool();
   const navigate = useNavigate();
   const online = useOnline();
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const isSuper = user?.role === 'superadmin';
+  const isTeacher = user?.role === 'teacher';
 
-  // O'qituvchi web'da faqat davomatni ko'radi; asosiy ish stoli — admin/menejer uchun.
-  // Superadmin esa maktab tanlamaguncha maktab ichidagi bo'limlarni ko'rmaydi:
+  // O'qituvchi web'da faqat davomatni ko'radi.
+  // Superadmin maktab tanlamaguncha maktab ichidagi bo'limlarni ko'rmaydi:
   // ular X-School-Id siz baribir "Maktab tanlanmagan" xatosini beradi.
-  const nav = user?.role === 'teacher'
-    ? NAV.filter((n) => n.to === '/attendance')
-    : isSuper
-      ? [SCHOOLS_NAV, ...(schoolId ? NAV : [])]
-      : NAV;
+  const schoolNav = isTeacher
+    ? SCHOOL_NAV.filter((n) => n.to === '/attendance')
+    : SCHOOL_NAV;
+  const mainNav: NavItem[] = isSuper
+    ? [SCHOOLS_NAV, ...(schoolId ? schoolNav : [])]
+    : schoolNav;
+
+  const allNav = [...mainNav, SETTINGS_NAV];
+  const primary = allNav.slice(0, MOBILE_SLOTS);
+  const overflow = allNav.slice(MOBILE_SLOTS);
 
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="logo">EduLive</div>
-        {nav.map((n) => (
-          <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-            <span aria-hidden>{n.icon}</span> {n.label}
-          </NavLink>
-        ))}
+        <nav className="sidebar-nav">
+          <NavItems items={mainNav} />
+        </nav>
+        <div className="sidebar-footer">
+          <NavItems items={[SETTINGS_NAV]} />
+        </div>
       </aside>
 
       <div className="content">
@@ -108,13 +142,12 @@ export function Layout({ children }: { children: ReactNode }) {
             ⚠ Internet aloqasi yo'q — ma'lumotlar eskirgan bo'lishi mumkin
           </div>
         )}
+
         <header className="topbar">
-          {/* Ism — sozlamalarga kirish nuqtasi. Alohida menyu bandi qo'shilmadi:
-              pastki mobil menyu allaqachon 6 tagacha bandni ko'taryapti. */}
-          <NavLink to="/settings" className="user-link" title="Sozlamalar">
-            <strong style={{ fontSize: 15 }}>{user?.fullName}</strong>
-          </NavLink>
-          <span className="muted role">{roleLabel(user?.role)}</span>
+          <div className="who">
+            <strong>{user?.fullName}</strong>
+            <span className="muted role">{roleLabel(user?.role)}</span>
+          </div>
           {isSuper && schoolId && <ActiveSchool />}
           <div className="spacer" />
           <ThemeToggle />
@@ -122,15 +155,33 @@ export function Layout({ children }: { children: ReactNode }) {
             Chiqish
           </button>
         </header>
+
         <main>{children}</main>
 
         <nav className="mobile-nav">
-          {nav.map((n) => (
-            <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-              <span aria-hidden>{n.icon}</span> {n.label}
-            </NavLink>
-          ))}
+          <NavItems items={primary} />
+          {overflow.length > 0 && (
+            <button
+              className={`nav-item${moreOpen ? ' active' : ''}`}
+              onClick={() => setMoreOpen(true)}
+              aria-haspopup="dialog"
+            >
+              <span className="nav-icon" aria-hidden>⋯</span>
+              <span>Yana</span>
+            </button>
+          )}
         </nav>
+
+        {/* Pastki panelga sig'magan bo'limlar. Gorizontal scroll o'rniga varaq:
+            7-8 ta band 390px ga hech qanday holatda sig'maydi. */}
+        {moreOpen && (
+          <div className="overlay sheet-overlay" onMouseDown={(e) => e.target === e.currentTarget && setMoreOpen(false)}>
+            <div className="sheet" role="dialog" aria-label="Boshqa bo'limlar">
+              <div className="sheet-grab" aria-hidden />
+              <NavItems items={overflow} onClick={() => setMoreOpen(false)} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

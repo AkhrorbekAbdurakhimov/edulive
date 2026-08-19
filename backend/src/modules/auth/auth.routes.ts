@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { tx } from '../../db/pool.js';
+import { pool, tx } from '../../db/pool.js';
 import { authenticate } from '../../middleware/auth.js';
 import { loginRateLimiter } from '../../middleware/rateLimit.js';
 import { audit } from '../audit/audit.service.js';
-import { badRequest, unauthorized } from '../../utils/errors.js';
+import { badRequest, conflict, unauthorized } from '../../utils/errors.js';
 import { ah } from '../../utils/http.js';
 import { parse } from '../../utils/validate.js';
 import {
@@ -156,6 +156,55 @@ authRoutes.post(
     res.json({
       token: signToken({ id: u.id, school_id: u.schoolId, role: u.role, token_version: newVersion }),
     });
+  }),
+);
+
+// ---------------------------------------------------------------- profil
+// Foydalanuvchi o'z ismi va telefonini o'zi o'zgartiradi. Rol va maktab bu
+// yerdan o'zgarmaydi — ular boshqaruv amali (users moduli).
+const profileSchema = z.object({
+  fullName: z.string().min(3, "Ism-familiya kamida 3 belgidan iborat bo'lishi kerak"),
+  phone: z.string().regex(/^\+998\d{9}$/, "Telefon raqam formati noto'g'ri (+998XXXXXXXXX)"),
+});
+
+authRoutes.patch(
+  '/profile',
+  ah(async (req, res) => {
+    const u = req.user!;
+    const input = parse(profileSchema, req.body);
+
+    // Telefon — bu login. Maktab ichida takrorlanmasligi kerak; superadmin
+    // uchun school_id NULL, unda NULL'lar taqqoslanmagani sababli qisman
+    // unikal indeks ushlamaydi, shuning uchun qo'lda tekshiramiz.
+    const dup = await pool.query(
+      `SELECT 1 FROM users
+        WHERE phone = $1 AND id <> $2
+          AND school_id IS NOT DISTINCT FROM $3`,
+      [input.phone, u.id, u.schoolId ?? null],
+    );
+    if (dup.rowCount) throw conflict('Bu telefon raqam allaqachon band');
+
+    const user = await tx(async (client) => {
+      const { rows: before } = await client.query(
+        `SELECT full_name, phone FROM users WHERE id = $1`,
+        [u.id],
+      );
+      const { rows } = await client.query(
+        `UPDATE users SET full_name = $2, phone = $3
+          WHERE id = $1
+          RETURNING id, school_id, full_name, phone, role`,
+        [u.id, input.fullName, input.phone],
+      );
+      req.schoolId = u.schoolId ?? undefined;
+      await audit(
+        req,
+        { action: 'auth.profile.update', entity: 'user', entityId: u.id, before: before[0], after: input },
+        client,
+      );
+      return rows[0];
+    });
+
+    res.json({ user: publicUser(user) });
   }),
 );
 

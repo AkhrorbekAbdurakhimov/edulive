@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, date } from '../lib/api';
 import { useSchool } from '../lib/school';
 import { REGIONS, DISTRICTS } from '../lib/regions';
-import { EmptyState, ErrorState, Modal, TableSkeleton, schoolStatusChip } from '../components/ui';
+import { EmptyState, ErrorState, Modal, TableSkeleton, initials, schoolStatusChip } from '../components/ui';
 
 interface SchoolRow {
   id: string;
@@ -14,6 +14,7 @@ interface SchoolRow {
   district: string | null;
   address: string | null;
   phone: string | null;
+  logo_url: string | null;
   plan: string;
   status: string;
   created_at: string;
@@ -46,6 +47,14 @@ function toSlug(name: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40);
+}
+
+/** Logotip yoki uning o'rniga nom bosh harflari. */
+function SchoolLogo({ school, size = 36 }: { school: { name: string; logo_url: string | null }; size?: number }) {
+  if (school.logo_url) {
+    return <img className="school-logo" src={school.logo_url} alt="" style={{ width: size, height: size }} />;
+  }
+  return <span className="avatar" style={{ width: size, height: size }}>{initials(school.name)}</span>;
 }
 
 export default function Schools() {
@@ -95,8 +104,13 @@ export default function Schools() {
               {schools.data.map((s) => (
                 <tr key={s.id}>
                   <td data-label="Maktab">
-                    <strong>{s.name}</strong>
-                    <div className="muted" style={{ fontSize: 12 }}>{s.slug}</div>
+                    <div className="row">
+                      <SchoolLogo school={s} />
+                      <div>
+                        <strong>{s.name}</strong>
+                        <div className="muted" style={{ fontSize: 12 }}>{s.slug}</div>
+                      </div>
+                    </div>
                   </td>
                   <td data-label="Manzil">
                     {s.district || s.region ? (
@@ -272,6 +286,69 @@ function CreateSchoolModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+/**
+ * Logotip formadan alohida saqlanadi: fayl yuborish uchun multipart kerak,
+ * qolgan maydonlar esa JSON bilan ketadi. Shuning uchun rasm tanlangan
+ * zahoti yuklanadi va "Saqlash" ni kutmaydi.
+ */
+function LogoEditor({ school }: { school: SchoolRow }) {
+  const qc = useQueryClient();
+  const [url, setUrl] = useState(school.logo_url);
+  const [err, setErr] = useState<string | null>(null);
+
+  const done = (next: string | null) => {
+    setUrl(next);
+    setErr(null);
+    qc.invalidateQueries({ queryKey: ['schools'] });
+  };
+  const fail = (e: any) => setErr(e?.response?.data?.error ?? "Yuklab bo'lmadi");
+
+  const upload = useMutation({
+    mutationFn: async (file: File) => {
+      const body = new FormData();
+      body.append('logo', file);
+      return (await api.post<{ logoUrl: string }>(`/schools/${school.id}/logo`, body)).data;
+    },
+    onSuccess: (d) => done(d.logoUrl),
+    onError: fail,
+  });
+
+  const remove = useMutation({
+    mutationFn: async () => (await api.delete(`/schools/${school.id}/logo`)).data,
+    onSuccess: () => done(null),
+    onError: fail,
+  });
+
+  const busy = upload.isPending || remove.isPending;
+
+  return (
+    <div className="logo-editor">
+      <SchoolLogo school={{ name: school.name, logo_url: url }} size={56} />
+      <div style={{ minWidth: 0 }}>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <label className={`btn btn-secondary sm${busy ? ' disabled' : ''}`}>
+            {upload.isPending ? 'Yuklanmoqda…' : url ? "Rasmni almashtirish" : 'Rasm tanlash'}
+            <input
+              type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={busy}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';           // bir xil faylni qayta tanlash ishlasin
+                if (f) upload.mutate(f);
+              }}
+            />
+          </label>
+          {url && (
+            <button type="button" className="btn btn-ghost sm" disabled={busy} onClick={() => remove.mutate()}>
+              O'chirish
+            </button>
+          )}
+        </div>
+        {err ? <span className="hint">{err}</span> : <span className="help">PNG, JPEG yoki WEBP — 2 MB gacha</span>}
+      </div>
+    </div>
+  );
+}
+
 function EditSchoolModal({ school, onClose }: { school: SchoolRow; onClose: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
@@ -305,6 +382,7 @@ function EditSchoolModal({ school, onClose }: { school: SchoolRow; onClose: () =
 
   return (
     <Modal title={school.name} onClose={onClose}>
+      <LogoEditor school={school} />
       <form onSubmit={submit}>
         <div className="form-grid">
           <div className="field">

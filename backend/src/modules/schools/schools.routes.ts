@@ -1,11 +1,16 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
+import { randomBytes } from 'node:crypto';
+import { mkdir, unlink } from 'node:fs/promises';
+import { join } from 'node:path';
+import multer from 'multer';
+import { env } from '../../config/env.js';
 import { pool, tx } from '../../db/pool.js';
 import { requireRole } from '../../middleware/auth.js';
 import { requireTenant } from '../../middleware/tenant.js';
 import { audit } from '../audit/audit.service.js';
 import { hashPassword } from '../auth/auth.service.js';
-import { conflict, notFound } from '../../utils/errors.js';
+import { badRequest, conflict, notFound } from '../../utils/errors.js';
 import { ah } from '../../utils/http.js';
 import { parse, uuidParam } from '../../utils/validate.js';
 
@@ -39,7 +44,7 @@ schoolsPlatformRoutes.get(
   '/',
   ah(async (_req, res) => {
     const { rows } = await pool.query(
-      `SELECT s.id, s.name, s.slug, s.region, s.district, s.address, s.phone, s.plan, s.status, s.created_at,
+      `SELECT s.id, s.name, s.slug, s.region, s.district, s.address, s.phone, s.logo_url, s.plan, s.status, s.created_at,
               (SELECT count(*)::int FROM students st WHERE st.school_id = s.id AND st.status = 'active') AS student_count,
               (SELECT count(*)::int FROM users u WHERE u.school_id = s.id AND u.is_active) AS user_count
          FROM schools s
@@ -100,7 +105,7 @@ schoolsPlatformRoutes.get(
   '/:id',
   ah(async (req, res) => {
     const { rows } = await pool.query(
-      `SELECT id, name, slug, region, district, phone, address, tg_code, plan, status, settings, created_at
+      `SELECT id, name, slug, region, district, phone, address, logo_url, tg_code, plan, status, settings, created_at
          FROM schools WHERE id = $1`,
       [uuidParam(req)],
     );
@@ -165,6 +170,110 @@ schoolsPlatformRoutes.patch(
   }),
 );
 
+
+// ---------------------------------------------------------------- logotip
+// Rasm diskda saqlanadi, bazada faqat yo'l turadi.
+// SVG ataylab qabul qilinmaydi: u ichida skript tashiy oladi, biz esa faylni
+// o'z domenimizdan beramiz — ya'ni bu saqlangan XSS bo'lardi.
+const LOGO_TYPES: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+};
+const LOGO_DIR = join(env.uploadDir, "schools");
+const LOGO_URL_PREFIX = "/uploads/schools/";
+
+const logoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      mkdir(LOGO_DIR, { recursive: true }).then(() => cb(null, LOGO_DIR), (err) => cb(err, LOGO_DIR));
+    },
+    // Fayl nomi butunlay tasodifiy: URL parametrini nomga qo'shish yo'l
+    // traversali xavfini tug'diradi, tasodifiy nom esa keshni ham yangilaydi.
+    filename: (_req, file, cb) => cb(null, randomBytes(16).toString("hex") + LOGO_TYPES[file.mimetype]),
+  }),
+  limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (!LOGO_TYPES[file.mimetype]) return cb(badRequest("Faqat PNG, JPEG yoki WEBP rasm yuklash mumkin"));
+    cb(null, true);
+  },
+});
+
+// Multer o'z xatolarini MulterError sifatida beradi — ular 500 emas, 400 bo'lsin.
+const uploadLogo: RequestHandler = (req, res, next) =>
+  logoUpload.single("logo")(req, res, (err: unknown) => {
+    if (err instanceof multer.MulterError) {
+      return next(badRequest(
+        err.code === "LIMIT_FILE_SIZE"
+          ? "Rasm hajmi 2 MB dan oshmasligi kerak"
+          : "Faylni yuklab bo'lmadi",
+      ));
+    }
+    next(err);
+  });
+
+/** Eski faylni o'chirish — best-effort: xatosi so'rovni yiqitmaydi. */
+async function removeLogoFile(url: string | null | undefined) {
+  if (!url?.startsWith(LOGO_URL_PREFIX)) return;
+  await unlink(join(LOGO_DIR, url.slice(LOGO_URL_PREFIX.length))).catch(() => {});
+}
+
+schoolsPlatformRoutes.post(
+  "/:id/logo",
+  uploadLogo,
+  ah(async (req, res) => {
+    if (!req.file) throw badRequest("Rasm biriktirilmagan");
+    const url = LOGO_URL_PREFIX + req.file.filename;
+
+    let id: string;
+    try {
+      id = uuidParam(req);
+    } catch (err) {
+      await removeLogoFile(url);   // fayl allaqachon yozilgan — yetim qoldirmaymiz
+      throw err;
+    }
+
+    const { rows: before } = await pool.query(`SELECT logo_url FROM schools WHERE id = $1`, [id]);
+    if (!before[0]) {
+      await removeLogoFile(url);
+      throw notFound("Maktab topilmadi");
+    }
+
+    await pool.query(`UPDATE schools SET logo_url = $2, updated_at = now() WHERE id = $1`, [id, url]);
+    await removeLogoFile(before[0].logo_url);
+    await audit(req, {
+      action: "school.logo.update",
+      entity: "school",
+      entityId: id,
+      before: { logo_url: before[0].logo_url },
+      after: { logo_url: url },
+    });
+
+    res.json({ logoUrl: url });
+  }),
+);
+
+schoolsPlatformRoutes.delete(
+  "/:id/logo",
+  ah(async (req, res) => {
+    const id = uuidParam(req);
+    const { rows } = await pool.query(`SELECT logo_url FROM schools WHERE id = $1`, [id]);
+    if (!rows[0]) throw notFound("Maktab topilmadi");
+
+    await pool.query(`UPDATE schools SET logo_url = NULL, updated_at = now() WHERE id = $1`, [id]);
+    await removeLogoFile(rows[0].logo_url);
+    await audit(req, {
+      action: "school.logo.delete",
+      entity: "school",
+      entityId: id,
+      before: { logo_url: rows[0].logo_url },
+      after: { logo_url: null },
+    });
+
+    res.json({ logoUrl: null });
+  }),
+);
+
 // ================================================================ o'z maktabi
 export const schoolRoutes = Router();
 schoolRoutes.use(requireTenant);
@@ -174,7 +283,7 @@ schoolRoutes.get(
   requireRole('admin', 'manager'),
   ah(async (req, res) => {
     const { rows } = await pool.query(
-      `SELECT id, name, slug, region, district, phone, address, tg_code, plan, status, settings
+      `SELECT id, name, slug, region, district, phone, address, logo_url, tg_code, plan, status, settings
          FROM schools WHERE id = $1`,
       [req.schoolId],
     );

@@ -19,6 +19,8 @@ interface AuthCtx {
    * eski token endi yaroqsiz). Uni saqlamasak joriy sessiya darhol uzilib qoladi.
    */
   setToken: (token: string) => void;
+  /** Profil o'zgargach yuqori paneldagi ism ham darhol yangilansin. */
+  updateUser: (patch: Partial<User>) => void;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -46,7 +48,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setToken = (token: string) => localStorage.setItem('edulive_token', token);
 
-  return <Ctx.Provider value={{ user, login, logout, setToken }}>{children}</Ctx.Provider>;
+  const updateUser = (patch: Partial<User>) =>
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      localStorage.setItem('edulive_user', JSON.stringify(next));
+      return next;
+    });
+
+  return (
+    <Ctx.Provider value={{ user, login, logout, setToken, updateUser }}>{children}</Ctx.Provider>
+  );
 }
 
 /** Rol nomi foydalanuvchiga ko'rinadigan holda — bir necha ekranda kerak. */

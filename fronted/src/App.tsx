@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Schools from './pages/Schools';
 import Settings from './pages/Settings';
+import Users from './pages/Users';
 import Students from './pages/Students';
 import StudentCard from './pages/StudentCard';
 import Attendance from './pages/Attendance';
@@ -33,6 +34,7 @@ export default function App() {
                 <Route path="/attendance" element={<NeedsSchool><Attendance /></NeedsSchool>} />
                 <Route path="/payments" element={<NeedsSchool><Payments /></NeedsSchool>} />
                 <Route path="/debtors" element={<NeedsSchool><Debtors /></NeedsSchool>} />
+                <Route path="/users" element={<NeedsSchool><StaffOnly><Users /></StaffOnly></NeedsSchool>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Layout>
@@ -65,6 +67,13 @@ function NeedsSchool({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const { schoolId } = useSchool();
   if (user?.role === 'superadmin' && !schoolId) return <Navigate to="/schools" replace />;
+  return <>{children}</>;
+}
+
+/** Xodimlar ro'yxati o'qituvchiga yopiq — backend ham unga 403 beradi. */
+function StaffOnly({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (user?.role === 'teacher') return <Navigate to="/attendance" replace />;
   return <>{children}</>;
 }
 

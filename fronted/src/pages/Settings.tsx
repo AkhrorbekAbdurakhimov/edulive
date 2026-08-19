@@ -1,35 +1,91 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { useAuth, roleLabel } from '../lib/auth';
+import { useAuth, roleLabel, type User } from '../lib/auth';
+import { initials } from '../components/ui';
 
 export default function Settings() {
-  const { user } = useAuth();
-
   return (
-    <div className="page">
+    <div className="page narrow">
       <div className="page-head">
         <h1>Sozlamalar</h1>
       </div>
-
-      <div className="card card-pad" style={{ maxWidth: 560, marginBottom: 16 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Profil</h2>
-        <Row label="F.I.Sh" value={user?.fullName} />
-        <Row label="Rol" value={roleLabel(user?.role)} />
-        <Row label="Telefon" value={user?.phone ?? undefined} />
-      </div>
-
+      <Profile />
       <ChangePassword />
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value?: string }) {
+function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
-    <div className="row" style={{ padding: '8px 0', alignItems: 'baseline' }}>
-      <span className="muted" style={{ minWidth: 96 }}>{label}</span>
-      <strong>{value || <span className="muted">—</span>}</strong>
-    </div>
+    <section className="card card-pad settings-card">
+      <h2>{title}</h2>
+      {hint && <p className="section-hint">{hint}</p>}
+      {children}
+    </section>
+  );
+}
+
+function Profile() {
+  const { user, updateUser } = useAuth();
+  const [form, setForm] = useState({ fullName: user?.fullName ?? '', phone: user?.phone ?? '' });
+  const [done, setDone] = useState(false);
+  const set = (k: keyof typeof form) => (e: { target: { value: string } }) => {
+    setDone(false);
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+  };
+
+  const save = useMutation({
+    mutationFn: async () =>
+      (await api.patch<{ user: User }>('/auth/profile', {
+        fullName: form.fullName.trim(),
+        phone: form.phone.trim(),
+      })).data.user,
+    onSuccess: (u) => { updateUser(u); setDone(true); },
+  });
+
+  const badPhone = form.phone.length > 0 && !/^\+998\d{9}$/.test(form.phone);
+  const errMsg = (save.error as any)?.response?.data?.error;
+  const dirty = form.fullName !== (user?.fullName ?? '') || form.phone !== (user?.phone ?? '');
+
+  return (
+    <Section title="Profil">
+      <div className="row" style={{ marginBottom: 18 }}>
+        <span className="avatar lg">{initials(user?.fullName ?? '?')}</span>
+        <div>
+          <div style={{ fontWeight: 600 }}>{user?.fullName}</div>
+          <div className="muted">{roleLabel(user?.role)}</div>
+        </div>
+      </div>
+
+      <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (!badPhone) save.mutate(); }}>
+        <div className="form-grid">
+          <div className="field">
+            <label htmlFor="fn">F.I.Sh</label>
+            <input id="fn" className="input" value={form.fullName} onChange={set('fullName')} required minLength={3} />
+          </div>
+          <div className="field">
+            <label htmlFor="ph">Telefon</label>
+            <input
+              id="ph" className={`input${badPhone ? ' err' : ''}`} value={form.phone}
+              onChange={set('phone')} inputMode="tel" required
+            />
+            {badPhone
+              ? <span className="hint">Format: +998XXXXXXXXX</span>
+              : <span className="help">Telefon — bu login. O'zgartirsangiz keyingi safar shu raqam bilan kirasiz.</span>}
+          </div>
+        </div>
+
+        {errMsg && <p className="hint" style={{ marginTop: 10 }}>{errMsg}</p>}
+        {done && <p className="save-note">✓ Profil saqlandi</p>}
+
+        <div className="actions">
+          <button className="btn btn-primary" disabled={!dirty || badPhone || save.isPending}>
+            {save.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
+          </button>
+        </div>
+      </form>
+    </Section>
   );
 }
 
@@ -72,53 +128,53 @@ function ChangePassword() {
   const blocked = mismatch || tooShort || same || !form.current || !form.next;
 
   return (
-    <form className="card card-pad" style={{ maxWidth: 560 }} onSubmit={submit}>
-      <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Parolni o'zgartirish</h2>
-      <p className="muted" style={{ marginTop: 0, marginBottom: 14 }}>
-        Parol o'zgargach boshqa qurilmalardagi sessiyalar bekor bo'ladi — bu yerda
-        ochiq qolasiz.
-      </p>
+    <Section
+      title="Parolni o'zgartirish"
+      hint="Parol o'zgargach boshqa qurilmalardagi sessiyalar bekor bo'ladi — bu yerda ochiq qolasiz."
+    >
+      <form onSubmit={submit}>
+        <div className="field" style={{ marginBottom: 14 }}>
+          <label htmlFor="cur">Joriy parol</label>
+          <input
+            id="cur" className="input" type="password" autoComplete="current-password"
+            value={form.current} onChange={set('current')} required
+          />
+        </div>
 
-      <div className="field" style={{ marginBottom: 12 }}>
-        <label htmlFor="cur">Joriy parol</label>
-        <input
-          id="cur" className="input" type="password" autoComplete="current-password"
-          value={form.current} onChange={set('current')} required
-        />
-      </div>
+        <div className="form-grid">
+          <div className="field">
+            <label htmlFor="new">Yangi parol</label>
+            <input
+              id="new" className={`input${tooShort || same ? ' err' : ''}`} type="password"
+              autoComplete="new-password" value={form.next} onChange={set('next')} required minLength={8}
+            />
+            {tooShort ? (
+              <span className="hint">Kamida 8 belgi</span>
+            ) : same ? (
+              <span className="hint">Yangi parol joriy paroldan farq qilishi kerak</span>
+            ) : (
+              <span className="help">Kamida 8 belgi</span>
+            )}
+          </div>
+          <div className="field">
+            <label htmlFor="rep">Yangi parolni takrorlang</label>
+            <input
+              id="rep" className={`input${mismatch ? ' err' : ''}`} type="password"
+              autoComplete="new-password" value={form.repeat} onChange={set('repeat')} required
+            />
+            {mismatch && <span className="hint">Parollar mos kelmadi</span>}
+          </div>
+        </div>
 
-      <div className="field" style={{ marginBottom: 12 }}>
-        <label htmlFor="new">Yangi parol</label>
-        <input
-          id="new" className={`input${tooShort || same ? ' err' : ''}`} type="password"
-          autoComplete="new-password" value={form.next} onChange={set('next')} required minLength={8}
-        />
-        {tooShort ? (
-          <span className="hint">Kamida 8 belgi</span>
-        ) : same ? (
-          <span className="hint">Yangi parol joriy paroldan farq qilishi kerak</span>
-        ) : (
-          <span className="help">Kamida 8 belgi</span>
-        )}
-      </div>
+        {errMsg && <p className="hint" style={{ marginTop: 10 }}>{errMsg}</p>}
+        {done && <p className="save-note">✓ Parol o'zgartirildi</p>}
 
-      <div className="field" style={{ marginBottom: 12 }}>
-        <label htmlFor="rep">Yangi parolni takrorlang</label>
-        <input
-          id="rep" className={`input${mismatch ? ' err' : ''}`} type="password"
-          autoComplete="new-password" value={form.repeat} onChange={set('repeat')} required
-        />
-        {mismatch && <span className="hint">Parollar mos kelmadi</span>}
-      </div>
-
-      {errMsg && <p className="hint">{errMsg}</p>}
-      {done && <p className="save-note">✓ Parol o'zgartirildi</p>}
-
-      <div className="actions">
-        <button className="btn btn-primary" disabled={blocked || change.isPending}>
-          {change.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
-        </button>
-      </div>
-    </form>
+        <div className="actions">
+          <button className="btn btn-primary" disabled={blocked || change.isPending}>
+            {change.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
+          </button>
+        </div>
+      </form>
+    </Section>
   );
 }
