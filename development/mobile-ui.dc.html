@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="uz" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EduLive — Android ilova va Telegram bot</title>
+<style>
+:root{
+  --page:#F6F7F9; --surface:#FFFFFF; --surface-2:#FAFBFC; --surface-3:#F2F4F7;
+  --border:#E5E7EB; --border-strong:#D3D7DE;
+  --t1:#0F1115; --t2:#4B5563; --t3:#8B8F98;
+  --brand:#4F46E5; --brand-hover:#4338CA; --brand-soft:#EEF2FF; --brand-ink:#4F46E5;
+  --good:#0CA30C; --warn:#FAB219; --serious:#EC835A; --crit:#D03B3B;
+  --good-ink:#067806; --warn-ink:#9A6800; --crit-ink:#B22C2C;
+  --tg-bg:#E7EDF3; --tg-in:#FFFFFF; --tg-out:#E3F0D7; --tg-hdr:#517DA2;
+  --shadow:0 1px 2px rgba(15,17,21,.05);
+  --frame:#1a1c22;
+  color-scheme:light;
+}
+[data-theme="dark"]{
+  --page:#0E1014; --surface:#16181D; --surface-2:#1C1F26; --surface-3:#22262E;
+  --border:#262A33; --border-strong:#343945;
+  --t1:#F5F6F8; --t2:#A8ADB8; --t3:#6F757F;
+  --brand:#4F46E5; --brand-hover:#6366F1; --brand-soft:#1E1B4B; --brand-ink:#818CF8;
+  --good-ink:#3FC03F; --warn-ink:#FAB219; --crit-ink:#E86B6B;
+  --tg-bg:#0F1620; --tg-in:#182533; --tg-out:#2B5278; --tg-hdr:#17212B;
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+  --frame:#2a2d36;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--page);color:var(--t1);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+.num{font-variant-numeric:tabular-nums}
+
+/* page chrome */
+.page-top{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand-mark{width:30px;height:30px;border-radius:8px;background:var(--brand);display:grid;place-items:center;flex:none}
+.page-top h1{font-size:17px;font-weight:650;letter-spacing:-.02em}
+.page-top p{font-size:12px;color:var(--t3)}
+.spacer{flex:1}
+.icon-btn{width:36px;height:36px;border-radius:8px;display:grid;place-items:center;color:var(--t2);border:1px solid var(--border)}
+.icon-btn:hover{background:var(--surface-2);color:var(--t1)}
+.wrap{padding:28px 24px 60px;max-width:1600px;margin:0 auto}
+.section-title{font-size:13px;font-weight:600;color:var(--t3);letter-spacing:.06em;text-transform:uppercase;margin:34px 0 16px}
+.section-title:first-child{margin-top:0}
+.rail{display:flex;gap:26px;flex-wrap:wrap}
+
+/* phone frame */
+.phone-block{width:352px}
+.phone-cap{font-size:13px;font-weight:600;margin-bottom:3px}
+.phone-sub{font-size:12px;color:var(--t3);margin-bottom:11px;min-height:32px}
+.phone{
+  width:352px;height:700px;border-radius:34px;background:var(--frame);padding:9px;
+  box-shadow:0 10px 30px rgba(15,17,21,.14);position:relative;
+}
+.screen{width:100%;height:100%;border-radius:26px;background:var(--surface);overflow:hidden;position:relative;display:flex;flex-direction:column}
+.statusbar{height:28px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:11px;font-weight:600;color:var(--t2);flex:none}
+.notch{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:92px;height:22px;background:var(--frame);border-radius:0 0 12px 12px;z-index:5}
+
+/* app header */
+.appbar{padding:6px 16px 12px;flex:none}
+.appbar .row{display:flex;align-items:center;gap:10px}
+.appbar h2{font-size:19px;font-weight:650;letter-spacing:-.02em}
+.appbar .meta{font-size:12px;color:var(--t3);margin-top:2px}
+.back{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--t2);margin-left:-6px}
+
+.body{flex:1;overflow-y:auto;padding:0 14px 12px}
+.body::-webkit-scrollbar{width:0}
+
+/* summary bar */
+.sumbar{display:flex;gap:8px;padding:10px 14px;flex:none;background:var(--surface-2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.sumbar div{flex:1;text-align:center}
+.sumbar b{display:block;font-size:19px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.2}
+.sumbar span{font-size:11px;color:var(--t3);font-weight:500}
+
+/* student row */
+.srow{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)}
+.srow:last-child{border-bottom:none}
+.sav{width:34px;height:34px;border-radius:9px;background:var(--surface-3);color:var(--t2);display:grid;place-items:center;font-size:11px;font-weight:700;flex:none}
+.sname{flex:1;min-width:0}
+.sname b{font-size:14px;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sname span{font-size:11px;color:var(--t3)}
+.stbtn{height:34px;min-width:96px;border-radius:9px;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:5px;border:1px solid transparent;flex:none}
+.st-p{background:color-mix(in srgb,var(--good) 13%,transparent);color:var(--good-ink)}
+.st-a{background:color-mix(in srgb,var(--crit) 14%,transparent);color:var(--crit-ink)}
+.st-l{background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn-ink)}
+
+/* thumb zone */
+.thumb{padding:12px 14px calc(12px + env(safe-area-inset-bottom));flex:none;border-top:1px solid var(--border);background:var(--surface)}
+.big-btn{width:100%;height:50px;border-radius:12px;background:var(--brand);color:#fff;font-size:15px;font-weight:650;display:flex;align-items:center;justify-content:center;gap:8px}
+.big-btn.sec{background:var(--surface);color:var(--t1);border:1px solid var(--border)}
+.hint{font-size:11px;color:var(--t3);text-align:center;margin-top:8px}
+
+/* cards on home */
+.lesson{display:flex;align-items:center;gap:11px;padding:13px;border:1px solid var(--border);border-radius:12px;margin-bottom:9px;background:var(--surface);box-shadow:var(--shadow)}
+.lesson .time{width:44px;flex:none;text-align:center}
+.lesson .time b{display:block;font-size:14px;font-weight:650;font-variant-numeric:tabular-nums}
+.lesson .time span{font-size:10px;color:var(--t3)}
+.lesson .info{flex:1;min-width:0}
+.lesson .info b{font-size:14px;font-weight:650;display:block}
+.lesson .info span{font-size:12px;color:var(--t3)}
+.pill{height:22px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px}
+.pill-todo{background:color-mix(in srgb,var(--crit) 14%,transparent);color:var(--crit-ink)}
+.pill-done{background:color-mix(in srgb,var(--good) 13%,transparent);color:var(--good-ink)}
+.pill-soon{background:var(--surface-3);color:var(--t2)}
+
+/* bottom nav */
+.bnav{display:flex;flex:none;border-top:1px solid var(--border);background:var(--surface);padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
+.bnav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:600;color:var(--t3);padding:4px 0}
+.bnav button.on{color:var(--brand-ink)}
+
+/* sheet */
+.sheet-scrim{position:absolute;inset:0;background:rgba(8,10,14,.5);display:flex;align-items:flex-end;border-radius:26px}
+.sheet{width:100%;background:var(--surface);border-radius:18px 18px 0 0;padding:8px 16px calc(16px + env(safe-area-inset-bottom))}
+.grab{width:34px;height:4px;border-radius:99px;background:var(--border-strong);margin:0 auto 14px}
+.sheet h3{font-size:17px;font-weight:650;letter-spacing:-.02em;margin-bottom:3px}
+.sheet .sub{font-size:12px;color:var(--t3);margin-bottom:14px}
+.tally{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.tally div{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.tally b{display:block;font-size:22px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.15}
+.tally span{font-size:11px;color:var(--t3);font-weight:500}
+.warn-note{display:flex;gap:8px;padding:10px 11px;border-radius:9px;background:color-mix(in srgb,var(--warn) 15%,transparent);color:var(--warn-ink);font-size:12px;font-weight:500;margin-bottom:12px}
+
+/* success */
+.success{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
+.tick{width:66px;height:66px;border-radius:99px;background:color-mix(in srgb,var(--good) 14%,transparent);display:grid;place-items:center;margin-bottom:16px}
+.success h3{font-size:19px;font-weight:650;letter-spacing:-.02em}
+.success p{font-size:13px;color:var(--t2);margin-top:6px;max-width:230px}
+.timer{margin-top:16px;padding:9px 13px;border:1px solid var(--border);border-radius:10px;font-size:12px;color:var(--t2);display:flex;align-items:center;gap:7px;white-space:nowrap}
+
+/* grading */
+.gstudent{text-align:center;padding:10px 0 8px}
+.gav{width:64px;height:64px;border-radius:18px;background:var(--brand-soft);color:var(--brand-ink);display:grid;place-items:center;font-size:20px;font-weight:700;margin:0 auto 11px}
+.gscore{font-size:56px;font-weight:650;letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums}
+.gscore small{font-size:17px;color:var(--t3);font-weight:600;letter-spacing:0}
+input[type=range]{width:100%;accent-color:var(--brand);height:28px}
+.quick{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:6px}
+.quick button{height:38px;border-radius:9px;border:1px solid var(--border);font-size:13px;font-weight:650;color:var(--t2);font-variant-numeric:tabular-nums}
+.quick button.on{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-ink)}
+.crit-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+.crit-row:last-child{border-bottom:none}
+.crit-row b{font-variant-numeric:tabular-nums;font-weight:650}
+.progress{height:4px;border-radius:99px;background:var(--surface-3);overflow:hidden;margin-bottom:6px}
+.progress i{display:block;height:100%;background:var(--brand);border-radius:99px}
+
+/* telegram */
+.tg{background:var(--tg-bg);flex:1;overflow-y:auto;padding:12px 10px}
+.tg::-webkit-scrollbar{width:0}
+.tg-hdr{background:var(--tg-hdr);color:#fff;padding:9px 14px;display:flex;align-items:center;gap:10px;flex:none}
+.tg-hdr .av{width:32px;height:32px;border-radius:99px;background:rgba(255,255,255,.22);display:grid;place-items:center;font-size:12px;font-weight:700}
+.tg-hdr b{font-size:14px;font-weight:600;display:block}
+.tg-hdr span{font-size:11px;opacity:.75}
+.bub{max-width:86%;border-radius:12px;padding:8px 11px;font-size:13px;line-height:1.45;margin-bottom:8px;box-shadow:0 1px 1px rgba(0,0,0,.06);white-space:pre-line}
+.bub.in{background:var(--tg-in);color:var(--t1);border-bottom-left-radius:4px}
+.bub.out{background:var(--tg-out);color:var(--t1);margin-left:auto;border-bottom-right-radius:4px}
+.bub time{display:block;text-align:right;font-size:10px;color:var(--t3);margin-top:3px}
+.kb{display:flex;flex-direction:column;gap:3px;margin:-4px 0 9px;max-width:86%}
+.kb button{background:var(--tg-in);border-radius:9px;padding:8px;font-size:12.5px;font-weight:600;color:var(--brand-ink);box-shadow:0 1px 1px rgba(0,0,0,.06)}
+.tg-input{flex:none;background:var(--tg-in);border-top:1px solid var(--border);padding:9px 12px;display:flex;align-items:center;gap:9px;font-size:13px;color:var(--t3)}
+.legend-note{font-size:12px;color:var(--t2);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-top:14px;line-height:1.7}
+.legend-note b{color:var(--t1)}
+</style>
+</head>
+<body>
+
+<div class="page-top">
+  <div class="brand-mark"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14L5 18h14"/></svg></div>
+  <div><h1>EduLive — mobil</h1><p>O'qituvchi Android ilovasi va ota-ona Telegram boti</p></div>
+  <div class="spacer"></div>
+  <button class="icon-btn" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2 6 6M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8 6 18M18 6l1.8-1.8"/></svg>
+  </button>
+</div>
+
+<div class="wrap">
+
+<div class="section-title">O'qituvchi ilovasi — Android</div>
+<div class="rail">
+
+  <!-- 1. HOME -->
+  <div class="phone-block">
+    <div class="phone-cap">1 · Bugun</div>
+    <div class="phone-sub">Ochilishi bilan bugungi darslar va davomat olinmagan sinflar ko'rinadi.</div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="statusbar"><span class="num">08:12</span><span>▮▮▮ ▲ ▮</span></div>
+      <div class="appbar">
+        <div class="row"><div style="flex:1"><h2>Assalomu alaykum, Nilufar</h2><div class="meta">Yakshanba, 9-avgust 2026</div></div>
+        <div style="width:34px;height:34px;border-radius:10px;background:var(--brand-soft);color:var(--brand-ink);display:grid;place-items:center;font-size:12px;font-weight:700">NY</div></div>
+      </div>
+      <div class="body">
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <div style="flex:1;border:1px solid var(--border);border-radius:11px;padding:10px 12px;background:var(--surface)">
+            <div style="font-size:11px;color:var(--t3);font-weight:500">Davomat kutilmoqda</div>
+            <div style="font-size:22px;font-weight:650" class="num">2</div>
+          </div>
+          <div style="flex:1;border:1px solid var(--border);border-radius:11px;padding:10px 12px;background:var(--surface)">
+            <div style="font-size:11px;color:var(--t3);font-weight:500">Baho qo'yilmagan</div>
+            <div style="font-size:22px;font-weight:650" class="num">16</div>
+          </div>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:var(--t3);margin-bottom:8px;letter-spacing:.04em">BUGUNGI DARSLAR</div>
+        <div class="lesson">
+          <div class="time"><b class="num">08:30</b><span>1-dars</span></div>
+          <div class="info"><b>5-A sinf</b><span>Matematika · 28 o'quvchi</span></div>
+          <span class="pill pill-todo"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 8v5M12 16.2v.1"/></svg>Kutilmoqda</span>
+        </div>
+        <div class="lesson">
+          <div class="time"><b class="num">09:25</b><span>2-dars</span></div>
+          <div class="info"><b>7-B sinf</b><span>Matematika · 26 o'quvchi</span></div>
+          <span class="pill pill-done"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Olindi</span>
+        </div>
+        <div class="lesson">
+          <div class="time"><b class="num">11:15</b><span>4-dars</span></div>
+          <div class="info"><b>9-B sinf</b><span>Matematika · 24 o'quvchi</span></div>
+          <span class="pill pill-soon">Keyinroq</span>
+        </div>
+        <div class="lesson">
+          <div class="time"><b class="num">13:00</b><span>6-dars</span></div>
+          <div class="info"><b>11-A sinf</b><span>Algebra · 22 o'quvchi</span></div>
+          <span class="pill pill-soon">Keyinroq</span>
+        </div>
+      </div>
+      <div class="bnav">
+        <button class="on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>Bugun</button>
+        <button><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="3.2"/><path d="M22 20v-2a4 4 0 0 0-3-3.8"/></svg>Sinflar</button>
+        <button><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>Baholar</button>
+        <button><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>Profil</button>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 2. ATTENDANCE (interactive) -->
+  <div class="phone-block">
+    <div class="phone-cap">2 · Davomat olish <span style="color:var(--brand-ink)">— bosib ko'ring</span></div>
+    <div class="phone-sub">Hamma sukut bo'yicha "Keldi". O'qituvchi faqat kelmaganlarni bosadi. Bosilganda: Keldi → Kelmadi → Kech.</div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="statusbar"><span class="num">08:31</span><span>▮▮▮ ▲ ▮</span></div>
+      <div class="appbar">
+        <div class="row">
+          <button class="back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <div style="flex:1"><h2>5-A sinf</h2><div class="meta">09.08.2026 · 1-dars · 28 o'quvchi</div></div>
+        </div>
+      </div>
+      <div class="sumbar" id="sumbar">
+        <div><b style="color:var(--good-ink)" id="cP">28</b><span>Keldi</span></div>
+        <div><b style="color:var(--crit-ink)" id="cA">0</b><span>Kelmadi</span></div>
+        <div><b style="color:var(--warn-ink)" id="cL">0</b><span>Kech qoldi</span></div>
+      </div>
+      <div class="body" id="roster" style="padding-top:4px"></div>
+      <div class="thumb">
+        <button class="big-btn" onclick="document.getElementById('sheet').style.display='flex'">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          Davomatni tasdiqlash
+        </button>
+        <div class="hint">Tasdiqlangandan keyin ota-onalarga xabar yuboriladi</div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 3. CONFIRM SHEET -->
+  <div class="phone-block">
+    <div class="phone-cap">3 · Tasdiqlash oynasi</div>
+    <div class="phone-sub">Yakuniy hisob va ogohlantirish. Bu qadamdan keyin Telegram bot ishga tushadi.</div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="statusbar"><span class="num">08:33</span><span>▮▮▮ ▲ ▮</span></div>
+      <div class="appbar"><div class="row"><button class="back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button><div style="flex:1"><h2>5-A sinf</h2><div class="meta">09.08.2026 · 1-dars</div></div></div></div>
+      <div class="body" style="opacity:.35;pointer-events:none">
+        <div class="srow"><div class="sav">AK</div><div class="sname"><b>Abdullayev Kamron</b></div><div class="stbtn st-p">Keldi</div></div>
+        <div class="srow"><div class="sav">DR</div><div class="sname"><b>Dadajonova Ra'no</b></div><div class="stbtn st-p">Keldi</div></div>
+        <div class="srow"><div class="sav">JT</div><div class="sname"><b>Toshmatov Jasur</b></div><div class="stbtn st-a">Kelmadi</div></div>
+      </div>
+      <div class="sheet-scrim" style="position:absolute">
+        <div class="sheet">
+          <div class="grab"></div>
+          <h3>Davomatni tasdiqlaysizmi?</h3>
+          <div class="sub">5-A sinf · 09.08.2026, 08:33</div>
+          <div class="tally">
+            <div><b class="num">28</b><span>Jami o'quvchi</span></div>
+            <div><b class="num" style="color:var(--good-ink)">25</b><span>Keldi</span></div>
+            <div><b class="num" style="color:var(--crit-ink)">2</b><span>Kelmadi</span></div>
+            <div><b class="num" style="color:var(--warn-ink)">1</b><span>Kech qoldi</span></div>
+          </div>
+          <div class="warn-note">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex:none;margin-top:1px"><path d="M12 3.5 2.5 20h19L12 3.5zM12 10v4M12 17.2v.1"/></svg>
+            <span><b>3 ta ota-onaga</b> Telegram orqali darhol xabar yuboriladi.</span>
+          </div>
+          <button class="big-btn">Tasdiqlash va yuborish</button>
+          <button class="big-btn sec" style="margin-top:8px;height:44px">Orqaga qaytish</button>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 4. SUCCESS -->
+  <div class="phone-block">
+    <div class="phone-cap">4 · Muvaffaqiyat</div>
+    <div class="phone-sub">Tahrirlash oynasi cheklangan — 3 soatdan keyin faqat menejer o'zgartira oladi (audit).</div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="statusbar"><span class="num">08:33</span><span>▮▮▮ ▲ ▮</span></div>
+      <div class="success">
+        <div class="tick"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--good)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <h3>Davomat saqlandi</h3>
+        <p>5-A sinf · 28 o'quvchi<br>3 ta ota-onaga xabar yuborildi</p>
+        <div class="timer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <span class="num">2 soat 58 daqiqa</span> ichida tahrirlash mumkin
+        </div>
+      </div>
+      <div class="thumb">
+        <button class="big-btn">Keyingi sinf — 7-B</button>
+        <button class="big-btn sec" style="margin-top:8px;height:44px">Bosh sahifaga</button>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 5. GRADING -->
+  <div class="phone-block">
+    <div class="phone-cap">5 · Haftalik baho <span style="color:var(--brand-ink)">— suring</span></div>
+    <div class="phone-sub">100 ball 4 mezonga bo'lingan — shunda ota-onaga "nega 78?" degan savolga javob bor.</div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="statusbar"><span class="num">14:05</span><span>▮▮▮ ▲ ▮</span></div>
+      <div class="appbar"><div class="row">
+        <button class="back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <div style="flex:1"><h2>Haftalik baho</h2><div class="meta">7-B · Matematika · 32-hafta</div></div>
+      </div></div>
+      <div style="padding:0 14px 8px">
+        <div class="progress"><i style="width:43%"></i></div>
+        <div style="font-size:11px;color:var(--t3);font-weight:600" class="num">12 / 28 o'quvchi</div>
+      </div>
+      <div class="body">
+        <div class="gstudent">
+          <div class="gav">MK</div>
+          <div style="font-size:15px;font-weight:650">Karimova Malika</div>
+          <div style="font-size:12px;color:var(--t3);margin-bottom:12px">O'tgan hafta: 82 ball</div>
+          <div class="gscore num" id="gsc">78<small> / 100</small></div>
+        </div>
+        <input type="range" min="0" max="100" value="78" id="grng" oninput="setScore(this.value)">
+        <div class="quick" id="quick">
+          <button onclick="setScore(60,1)">60</button><button onclick="setScore(70,1)">70</button>
+          <button class="on" onclick="setScore(80,1)">80</button><button onclick="setScore(90,1)">90</button><button onclick="setScore(100,1)">100</button>
+        </div>
+        <div style="margin-top:14px;border:1px solid var(--border);border-radius:11px;padding:4px 12px">
+          <div class="crit-row"><span>Bilim <span style="color:var(--t3)">/ 40</span></span><b class="num">32</b></div>
+          <div class="crit-row"><span>Uy vazifasi <span style="color:var(--t3)">/ 25</span></span><b class="num">20</b></div>
+          <div class="crit-row"><span>Faollik <span style="color:var(--t3)">/ 20</span></span><b class="num">14</b></div>
+          <div class="crit-row"><span>Intizom <span style="color:var(--t3)">/ 15</span></span><b class="num">12</b></div>
+        </div>
+      </div>
+      <div class="thumb">
+        <button class="big-btn">Saqlash va keyingisi <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
+        <div class="hint">Chapga surib ham keyingi o'quvchiga o'tish mumkin</div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 6. OFFLINE -->
+  <div class="phone-block">
+    <div class="phone-cap">6 · Oflayn holat</div>
+    <div class="phone-sub">Koridorda internet yo'q bo'lsa ham davomat olinadi — navbatga qo'yiladi.</div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="statusbar"><span class="num">08:29</span><span>✕ ▲ ▮</span></div>
+      <div style="background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn-ink);padding:9px 14px;font-size:12px;font-weight:600;display:flex;gap:8px;align-items:center;flex:none">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex:none"><path d="M2 2l20 20M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 4-2.5M19 12.9a10 10 0 0 0-3-2.2"/><path d="M12 20v.1"/></svg>
+        Internet yo'q — 1 ta davomat navbatda
+      </div>
+      <div class="appbar"><div class="row"><div style="flex:1"><h2>5-A sinf</h2><div class="meta">09.08.2026 · lokal saqlandi</div></div></div></div>
+      <div class="body">
+        <div style="border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:9px">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--warn-ink)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <b style="font-size:14px">Yuborilishi kutilmoqda</b>
+          </div>
+          <div style="font-size:13px;color:var(--t2);line-height:1.6">
+            5-A sinf davomati · 28 o'quvchi<br>
+            25 keldi · 2 kelmadi · 1 kech qoldi<br>
+            <span style="color:var(--t3);font-size:12px">Aloqa tiklanganda avtomatik yuboriladi va ota-onalarga xabar boradi.</span>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--t3);text-align:center;padding:10px">Ma'lumot telefoningizda xavfsiz saqlangan.<br>Ilovani yopsangiz ham yo'qolmaydi.</div>
+      </div>
+      <div class="thumb"><button class="big-btn sec">Qayta urinish</button></div>
+    </div></div>
+  </div>
+
+</div>
+
+<div class="section-title">Ota-ona — Telegram bot</div>
+<div class="rail">
+
+  <!-- 7. TG attendance -->
+  <div class="phone-block">
+    <div class="phone-cap">7 · Davomat xabarlari</div>
+    <div class="phone-sub">Birinchi qatorda eng muhim ma'lumot. Farzand ismi har doim boshida — bir ota-onada bir necha farzand bo'lishi mumkin.</div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="statusbar"><span class="num">08:34</span><span>▮▮▮ ▲ ▮</span></div>
+      <div class="tg-hdr">
+        <div class="av">Z</div>
+        <div style="flex:1"><b>EduLive · Afsona maktabi</b><span>bot</span></div>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
+      </div>
+      <div class="tg">
+        <div class="bub in">✅ <b>Aziza</b> bugun darsga keldi.
+09.08.2026, 08:15<time>08:15</time></div>
+
+        <div class="bub in">❌ <b>Jasur</b> bugun darsga kelmadi.
+09.08.2026, 1-dars
+
+Agar sabab bo'lsa, quyidagi tugma orqali yuboring.<time>08:34</time></div>
+        <div class="kb">
+          <button>📝 Sabab yuborish</button>
+          <button>📅 Davomat tarixi</button>
+        </div>
+
+        <div class="bub out">Shifokorda edik, spravka bor<time>09:02 ✓✓</time></div>
+
+        <div class="bub in">Rahmat. Sabab sinf rahbariga yuborildi — tasdiqlangandan keyin xabar beramiz.<time>09:02</time></div>
+
+        <div class="bub in">🟡 <b>Aziza</b> darsga 18 daqiqa kechikdi.
+09.08.2026, 08:33<time>08:33</time></div>
+      </div>
+      <div class="tg-input">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21.5 11.5v-.5a9 9 0 1 0-9 9h.5"/><path d="M8.5 14.5s1.4 1.8 3.5 1.8 3.5-1.8 3.5-1.8M9 9.5v.1M15 9.5v.1"/></svg>
+        <span style="flex:1">Xabar yozing…</span>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2.5 11 13M21.5 2.5l-6.8 19-3.7-8.5L2.5 9.3z"/></svg>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 8. TG payments -->
+  <div class="phone-block">
+    <div class="phone-cap">8 · To'lov va qarzdorlik</div>
+    <div class="phone-sub">Chek darhol keladi — bu ota-onalar uchun eng ishonch beradigan narsa. Eslatma yumshoq ohangda.</div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="statusbar"><span class="num">15:20</span><span>▮▮▮ ▲ ▮</span></div>
+      <div class="tg-hdr">
+        <div class="av">Z</div>
+        <div style="flex:1"><b>EduLive · Afsona maktabi</b><span>bot</span></div>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
+      </div>
+      <div class="tg">
+        <div class="bub in">💳 <b>To'lov qabul qilindi</b>
+
+O'quvchi: Jasur Toshmatov (5-A)
+Summa: <b>1 700 000 so'm</b>
+Oylar: Iyun, Avgust 2026
+Usul: Naqd
+Qabul qildi: G. Sattorova
+
+Qoldiq: <b>0 so'm</b> ✅<time>15:20</time></div>
+        <div class="kb"><button>🧾 Chekni yuklab olish (PDF)</button></div>
+
+        <div class="bub in">📌 <b>Sentabr oyi to'lovi</b>
+
+O'quvchi: Jasur Toshmatov (5-A)
+Summa: 1 200 000 so'm
+Muddat: 10.09.2026
+
+Rahmat!<time>01.09 · 10:00</time></div>
+        <div class="kb">
+          <button>💳 Click orqali to'lash</button>
+          <button>📊 To'lovlar tarixi</button>
+        </div>
+
+        <div class="bub in">📣 <b>Maktab e'loni</b>
+
+12-avgust kuni soat 15:00 da ota-onalar yig'ilishi bo'lib o'tadi. 5–7-sinflar uchun.<time>07.08 · 12:30</time></div>
+      </div>
+      <div class="tg-input">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21.5 11.5v-.5a9 9 0 1 0-9 9h.5"/><path d="M8.5 14.5s1.4 1.8 3.5 1.8 3.5-1.8 3.5-1.8M9 9.5v.1M15 9.5v.1"/></svg>
+        <span style="flex:1">Xabar yozing…</span>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2.5 11 13M21.5 2.5l-6.8 19-3.7-8.5L2.5 9.3z"/></svg>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 9. TG onboarding -->
+  <div class="phone-block">
+    <div class="phone-cap">9 · Bog'lanish (onboarding)</div>
+    <div class="phone-sub">Multi-tenant uchun muhim: <b>bitta bot, ko'p maktab</b>. Maktab deep link orqali aniqlanadi, ota-ona telefon bilan tasdiqlanadi.</div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="statusbar"><span class="num">19:40</span><span>▮▮▮ ▲ ▮</span></div>
+      <div class="tg-hdr">
+        <div class="av">Z</div>
+        <div style="flex:1"><b>EduLive · Afsona maktabi</b><span>bot</span></div>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
+      </div>
+      <div class="tg">
+        <div class="bub out">/start af7k29<time>19:38 ✓✓</time></div>
+        <div class="bub in">Assalomu alaykum! 👋
+
+Bu <b>Afsona maktabi</b>ning rasmiy boti.
+
+Farzandingiz haqidagi xabarlarni olish uchun telefon raqamingizni tasdiqlang.<time>19:38</time></div>
+        <div class="kb"><button>📱 Telefon raqamni yuborish</button></div>
+
+        <div class="bub out">+998 90 123 45 67<time>19:39 ✓✓</time></div>
+
+        <div class="bub in">Rahmat! Raqamingiz bo'yicha <b>2 ta farzand</b> topildi:
+
+1️⃣ Jasur Toshmatov — 5-A
+2️⃣ Aziza Toshmatova — 8-B
+
+Ikkalasi uchun ham xabarlar shu chatga keladi.<time>19:39</time></div>
+        <div class="kb">
+          <button>✅ Tasdiqlash</button>
+          <button>⚙️ Xabar sozlamalari</button>
+        </div>
+
+        <div class="bub in">Tayyor! ✅
+Endi davomat, baho va to'lov xabarlarini olasiz.
+
+Xabarlarni istalgan vaqtda /sozlamalar orqali o'chirishingiz mumkin.<time>19:40</time></div>
+      </div>
+      <div class="tg-input">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21.5 11.5v-.5a9 9 0 1 0-9 9h.5"/><path d="M8.5 14.5s1.4 1.8 3.5 1.8 3.5-1.8 3.5-1.8M9 9.5v.1M15 9.5v.1"/></svg>
+        <span style="flex:1">Xabar yozing…</span>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2.5 11 13M21.5 2.5l-6.8 19-3.7-8.5L2.5 9.3z"/></svg>
+      </div>
+    </div></div>
+  </div>
+
+</div>
+
+<div class="legend-note" style="max-width:100%">
+  <b>Dizayn qarorlari:</b> davomat ekranida sukut holati "Keldi" — o'qituvchi 28 ta emas, 2–3 ta bosish qiladi (~15 soniya).
+  Tasdiqlash tugmasi doim bosh barmoq zonasida (pastki 1/3). Barcha teginish nishonlari ≥ 44px.
+  Status ranglari hech qachon yolg'iz emas — har doim ikonka va so'z bilan.
+  Oflayn holat birinchi darajali: koridorda internet yo'qligi normal holat deb qabul qilingan.
+</div>
+
+</div>
+
+<script>
+/* interactive attendance roster */
+const names=["Abdullayev Kamron","Dadajonova Ra'no","Ergashev Sanjar","Ismoilova Dilnoza","Jabborov Otabek",
+"Karimova Malika","Mahmudov Doniyor","Nazarova Sevinch","Olimov Shohruh","Qodirova Nilufar",
+"Rahimov Sardor","Toshmatov Jasur","Umarova Zarina","Yusupov Bekzod"];
+const STATES=[{k:'p',t:'Keldi',c:'st-p',i:'<path d="M20 6 9 17l-5-5"/>'},
+              {k:'a',t:'Kelmadi',c:'st-a',i:'<path d="M18 6 6 18M6 6l12 12"/>'},
+              {k:'l',t:'Kech qoldi',c:'st-l',i:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'}];
+const state=names.map(()=>0);
+const ini=n=>n.split(' ').slice(0,2).map(w=>w[0]).join('');
+
+function renderRoster(){
+  document.getElementById('roster').innerHTML = names.map((n,i)=>{
+    const s=STATES[state[i]];
+    return `<div class="srow">
+      <div class="sav">${ini(n)}</div>
+      <div class="sname"><b>${n}</b><span>№ ${i+1}</span></div>
+      <button class="stbtn ${s.c}" onclick="cycle(${i})">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${s.i}</svg>${s.t}
+      </button>
+    </div>`;
+  }).join('') + `<div style="text-align:center;font-size:11px;color:var(--t3);padding:12px 0">+ yana 14 o'quvchi</div>`;
+  const c=[0,0,0]; state.forEach(v=>c[v]++);
+  document.getElementById('cP').textContent=c[0]+14;
+  document.getElementById('cA').textContent=c[1];
+  document.getElementById('cL').textContent=c[2];
+}
+function cycle(i){ state[i]=(state[i]+1)%3; renderRoster(); }
+renderRoster();
+
+/* chatlarni pastga surish */
+document.querySelectorAll('.tg').forEach(t=>t.scrollTop=t.scrollHeight);
+
+/* grading */
+function setScore(v,fromQuick){
+  document.getElementById('gsc').innerHTML = v + '<small> / 100</small>';
+  if(fromQuick) document.getElementById('grng').value=v;
+  document.querySelectorAll('#quick button').forEach(b=>b.classList.toggle('on', b.textContent==String(v)));
+}
+</script>
+</body>
+</html>

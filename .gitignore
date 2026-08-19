@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+.expo/
+.env
+.env.test
+.env.*.local
+*.log
+.DS_Store
+
+# runtime data (server-side, never committed)
+# NOTE: anchored paths only — a bare "uploads/" would also ignore the
+# source folder backend/src/modules/uploads/ and break the build.
+/uploads/
+backend/uploads/
+backups/
+
+# local Claude/IDE state
+.claude/
+*.tsbuildinfo
+.tsbuild/

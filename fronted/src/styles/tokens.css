@@ -1,0 +1,57 @@
+/* =====================================================================
+   EduLive design tokens — development/DESIGN_PROMPT.md dan olingan.
+   Rang qiymatlarini FAQAT shu faylda o'zgartiring.
+   ===================================================================== */
+:root {
+  --page: #F6F7F9;  --surface: #FFFFFF;  --surface-2: #FAFBFC;  --surface-3: #F2F4F7;
+  --border: #E5E7EB; --border-strong: #D3D7DE;
+  --t1: #0F1115; --t2: #4B5563; --t3: #8B8F98;
+
+  --brand: #4F46E5; --brand-hover: #4338CA; --brand-soft: #EEF2FF; --brand-ink: #4F46E5;
+
+  /* Status — hech qachon o'zgartirilmaydi va HAR DOIM ikonka + so'z bilan */
+  --good: #0CA30C; --warn: #FAB219; --serious: #EC835A; --crit: #D03B3B;
+  --good-ink: #067806; --warn-ink: #9A6800; --serious-ink: #B5502A; --crit-ink: #B22C2C;
+
+  /* Diagramma seriyalari — rang ko'rmaslik uchun tekshirilgan, almashtirmang */
+  --s1: #2A78D6; --s2: #EB6834; --s3: #1BAF7A;
+  --grid: #E9EBEF; --axis: #D3D7DE;
+
+  --r-control: 8px; --r-card: 12px; --r-sheet: 16px;
+  --shadow: 0 1px 2px rgba(15, 17, 21, .04);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --page: #0E1014; --surface: #16181D; --surface-2: #1C1F26; --surface-3: #22262E;
+  --border: #262A33; --border-strong: #343945;
+  --t1: #F5F6F8; --t2: #A8ADB8; --t3: #6F757F;
+  --brand-hover: #6366F1; --brand-soft: #1E1B4B; --brand-ink: #818CF8;
+  --good-ink: #3FC03F; --warn-ink: #FAB219; --serious-ink: #EC835A; --crit-ink: #E86B6B;
+  --s1: #3987E5; --s2: #D95926; --s3: #199E70;
+  --grid: #21252D; --axis: #343945;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px; line-height: 1.5;
+  background: var(--page); color: var(--t1);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Pul va raqam ustunlari — HAR DOIM */
+.num, table td, table th { font-variant-numeric: tabular-nums; }
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--brand);
+  border-radius: var(--r-control);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

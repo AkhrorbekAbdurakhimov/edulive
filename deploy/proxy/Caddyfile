@@ -1,0 +1,17 @@
+# Edge proxy — domen bo'yicha ajratadi va Let's Encrypt sertifikatini oladi.
+# Ilova konteynerlari ichkarida oddiy :80 da ishlaydi (TLS shu yerda tugaydi).
+# Xavfsizlik header'lari va CSP har bir ilovaning o'z Caddy'sidan keladi.
+{
+	email admin@edulive.uz
+}
+
+kassly.uz, www.kassly.uz {
+	encode gzip zstd
+	# `kassly-web` — kassly stack'ining `edge` tarmog'idagi taxallusi.
+	reverse_proxy kassly-web:80
+}
+
+edulive.uz, www.edulive.uz {
+	encode gzip zstd
+	reverse_proxy edulive-web:80
+}

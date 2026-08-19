@@ -1,0 +1,23 @@
+# Faqat lokal ishlab chiqish uchun — Postgres konteyneri.
+# Backendning o'zi `npm run dev` bilan host'da ishlaydi (tez qayta yuklanadi).
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: edulive_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: edulive
+      POSTGRES_PASSWORD: edulive_dev_pass
+      POSTGRES_DB: edulive
+    ports:
+      - "5434:5432"
+    volumes:
+      - edulive_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edulive -d edulive"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  edulive_pgdata:

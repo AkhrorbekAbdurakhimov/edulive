@@ -1,0 +1,28 @@
+# {$DOMAIN} muhitdan keladi (docker-compose.prod.yml ga qarang).
+# Haqiqiy domen (masalan edulive.uz) => avtomatik Let's Encrypt HTTPS.
+# Domensiz sinash uchun ":80" yozing.
+{$DOMAIN} {
+	encode gzip zstd
+
+	# API, fayllar va healthcheck backend konteynerida.
+	@backend path /api/* /uploads/* /health
+	handle @backend {
+		reverse_proxy backend:4000
+	}
+
+	# Qolgani — React SPA.
+	handle {
+		header {
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "DENY"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			Permissions-Policy "camera=(), microphone=(), geolocation=()"
+			Strict-Transport-Security "max-age=31536000; includeSubDomains"
+			-Server
+		}
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

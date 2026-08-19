@@ -1,0 +1,83 @@
+# Production stack — serverda /opt/edulive papkasida ishlaydi.
+# Qiymatlar yonidagi .env faylidan keladi (deploy/.env.example ga qarang).
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Swap yo'q — limitsiz konteyner OOM paytida butun mashinani xavf ostiga qo'yadi.
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  backend:
+    image: ${BACKEND_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      # Konteyner limiti 512M — Node heap'i shundan past bo'lsin, aks holda
+      # jarayon GC qilish o'rniga OOM bilan o'ldiriladi.
+      NODE_OPTIONS: --max-old-space-size=384
+      PORT: 4000
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      CORS_ORIGIN: https://${DOMAIN}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      UPLOAD_DIR: /app/uploads
+      # Bitta bot barcha maktablar uchun — maktab /start <tg_code> orqali aniqlanadi.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-edulive_bot}
+      # Bo'sh bo'lsa webhook javob bermaydi (403) — fail-closed.
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      ATTENDANCE_EDIT_WINDOW_HOURS: ${ATTENDANCE_EDIT_WINDOW_HOURS:-3}
+      BACKUP_DIR: /app/backups
+    volumes:
+      - ./uploads:/app/uploads
+      - ./backups:/app/backups
+    # Excel/PDF eksport xotirani sakratadi; Node heap'i shundan pastda (NODE_OPTIONS).
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  web:
+    image: ${WEB_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    # TLS va domen bo'yicha marshrutlash edge proxy'da (/opt/proxy) — bu Caddy
+    # ichkarida oddiy :80 da tinglaydi va host portini e'lon qilmaydi.
+    environment:
+      DOMAIN: ":80"
+    networks:
+      default:
+      edge:
+        # Edge proxy shu nom orqali topadi (deploy/proxy/Caddyfile).
+        aliases: [edulive-web]
+    # Caddy statik fayl beradi — ko'p kerak emas.
+    deploy:
+      resources:
+        limits:
+          memory: 96M
+
+volumes:
+  pgdata:
+
+networks:
+  # `docker network create edge` — bir martalik, proxy stack bilan umumiy.
+  edge:
+    external: true

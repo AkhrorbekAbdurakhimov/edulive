@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "EduLive",
+    "slug": "edulive",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "edulive",
+    "android": {
+      "package": "uz.edulive.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#4F46E5"
+      },
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ]
+    },
+    "extra": {
+      "apiUrl": "http://10.0.2.2:4000/api"
+    },
+    "plugins": [
+      "expo-asset"
+    ]
+  }
+}

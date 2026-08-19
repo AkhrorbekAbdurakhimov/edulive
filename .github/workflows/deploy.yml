@@ -1,0 +1,133 @@
+name: CI / Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---- Backend: typecheck + integration tests against a throwaway Postgres ----
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: edulive
+          POSTGRES_PASSWORD: edulive
+          POSTGRES_DB: edulive_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U edulive"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    # env.ts `dotenv/config` bilan .env ni o'qiydi, lekin dotenv mavjud
+    # o'zgaruvchilarni bosmaydi — CI'da .env yo'q, shuning uchun shu yerdagilar amal qiladi.
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://edulive:edulive@localhost:5432/edulive_test
+      JWT_SECRET: test_secret_at_least_32_characters_long
+      TELEGRAM_WEBHOOK_SECRET: test_webhook_secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      # Testlar sxemani o'zi yaratmaydi — migratsiyalar oldindan qo'llanadi.
+      - run: npm run migrate
+      - run: npm test
+
+  # ---- Frontend: typecheck + production build ----
+  frontend-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fronted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: fronted/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  # ---- Build images and push to GHCR (main only) ----
+  build-and-push:
+    needs: [test, frontend-check]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lowercase repo owner
+        id: vars
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ghcr.io/${{ steps.vars.outputs.owner }}/edulive-backend:latest
+            ghcr.io/${{ steps.vars.outputs.owner }}/edulive-backend:${{ github.sha }}
+      - name: Build & push web
+        uses: docker/build-push-action@v6
+        with:
+          context: ./fronted
+          push: true
+          tags: |
+            ghcr.io/${{ steps.vars.outputs.owner }}/edulive-web:latest
+            ghcr.io/${{ steps.vars.outputs.owner }}/edulive-web:${{ github.sha }}
+
+  # ---- Pull the new images on the VPS and restart ----
+  deploy:
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          envs: GHCR_USER,GHCR_TOKEN
+          script: |
+            set -e
+            cd /opt/edulive
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f
+            # Backend migratsiyalarni entrypoint'da qo'llaydi — sog'lom bo'lguncha kutamiz.
+            for i in $(seq 1 30); do
+              if docker compose -f docker-compose.prod.yml exec -T backend \
+                   node -e "fetch('http://localhost:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+                echo "backend sog'lom"; break
+              fi
+              [ "$i" = "30" ] && { docker compose -f docker-compose.prod.yml logs --tail=80 backend; exit 1; }
+              sleep 3
+            done
+            docker compose -f docker-compose.prod.yml ps

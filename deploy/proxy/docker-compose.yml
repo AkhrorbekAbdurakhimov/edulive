@@ -1,0 +1,32 @@
+# Umumiy edge proxy — serverda /opt/proxy papkasida ishlaydi.
+# 80/443 portlarini FAQAT shu stack egallaydi; kassly va edulive
+# `web` konteynerlari host portini e'lon qilmaydi va `edge` tarmog'i
+# orqali shu yerga ulanadi. TLS sertifikatlarini ham shu oladi.
+#
+#   docker network create edge      # bir martalik
+#   cd /opt/proxy && docker compose up -d
+services:
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  edge:
+    external: true
