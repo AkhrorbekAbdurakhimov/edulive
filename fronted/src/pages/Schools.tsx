@@ -1,10 +1,16 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api, date } from '../lib/api';
+import { api, date, money } from '../lib/api';
 import { useSchool } from '../lib/school';
 import { REGIONS, DISTRICTS } from '../lib/regions';
-import { EmptyState, ErrorState, Modal, TableSkeleton, initials, schoolStatusChip } from '../components/ui';
+import { EmptyState, ErrorState, Modal, TableSkeleton, TileSkeleton, initials, schoolStatusChip } from '../components/ui';
+
+interface SchoolStats {
+  currentYear: string | null;
+  students: number; classes: number; staff: number; teachers: number;
+  thisMonth: number; billed: number; collected: number; debt: number;
+}
 
 interface SchoolRow {
   id: string;
@@ -60,6 +66,7 @@ function SchoolLogo({ school, size = 36 }: { school: { name: string; logo_url: s
 export default function Schools() {
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<SchoolRow | null>(null);
+  const [stats, setStats] = useState<SchoolRow | null>(null);
   const { enter } = useSchool();
   const navigate = useNavigate();
 
@@ -129,6 +136,7 @@ export default function Schools() {
                   <td data-label="Qo'shilgan" className="num">{date(s.created_at)}</td>
                   <td data-label="Amallar">
                     <div className="row">
+                      <button className="btn btn-ghost sm" onClick={() => setStats(s)}>Statistika</button>
                       <button className="btn btn-secondary sm" onClick={() => setEditing(s)}>Tahrirlash</button>
                       <button className="btn btn-primary sm" onClick={() => openSchool(s.id)}>Kirish</button>
                     </div>
@@ -142,6 +150,7 @@ export default function Schools() {
 
       {showCreate && <CreateSchoolModal onClose={() => setShowCreate(false)} />}
       {editing && <EditSchoolModal school={editing} onClose={() => setEditing(null)} />}
+      {stats && <StatsModal school={stats} onClose={() => setStats(null)} />}
     </div>
   );
 }
@@ -439,5 +448,56 @@ function EditSchoolModal({ school, onClose }: { school: SchoolRow; onClose: () =
         </div>
       </form>
     </Modal>
+  );
+}
+
+/**
+ * Maktab bo'yicha umumiy ko'rsatkichlar. Ataylab faqat agregat: platforma
+ * egasiga maktabning ichki tafsiloti (kim qarzdor, kim kelmadi) kerak emas.
+ */
+function StatsModal({ school, onClose }: { school: SchoolRow; onClose: () => void }) {
+  const stats = useQuery({
+    queryKey: ['school-stats', school.id],
+    queryFn: async () =>
+      (await api.get<{ stats: SchoolStats }>(`/schools/${school.id}/stats`)).data.stats,
+  });
+
+  return (
+    <Modal title={school.name} onClose={onClose}>
+      {stats.isPending ? (
+        <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+          {[0, 1, 2, 3].map((i) => <TileSkeleton key={i} />)}
+        </div>
+      ) : stats.isError ? (
+        <ErrorState error={stats.error} onRetry={() => stats.refetch()} />
+      ) : (
+        <>
+          <p className="muted" style={{ marginTop: 0 }}>
+            O'quv yili: <strong>{stats.data.currentYear ?? 'belgilanmagan'}</strong>
+          </p>
+          <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+            <Tile label="Sinflar" value={String(stats.data.classes)} />
+            <Tile label="O'quvchilar" value={String(stats.data.students)} />
+            <Tile label="Xodimlar" value={String(stats.data.staff)} sub={`${stats.data.teachers} o'qituvchi`} />
+            <Tile label="Shu oy tushum" value={money(stats.data.thisMonth)} />
+            <Tile label="Jami hisoblangan" value={money(stats.data.billed)} />
+            <Tile label="Qarzdorlik" value={money(stats.data.debt)} sub={`to'langan: ${money(stats.data.collected)}`} />
+          </div>
+        </>
+      )}
+      <div className="actions">
+        <button className="btn btn-secondary" onClick={onClose}>Yopish</button>
+      </div>
+    </Modal>
+  );
+}
+
+function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="card stat-tile">
+      <div className="label">{label}</div>
+      <div className="value num" style={{ fontSize: 24 }}>{value}</div>
+      {sub && <div className="sub">{sub}</div>}
+    </div>
   );
 }

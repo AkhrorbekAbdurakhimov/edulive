@@ -114,6 +114,58 @@ schoolsPlatformRoutes.get(
   }),
 );
 
+/**
+ * Maktab bo'yicha umumiy ko'rsatkichlar — platforma darajasidagi ko'rinish.
+ * Ataylab faqat AGREGAT: shaxsiy ma'lumot (kim qarzdor, kim kelmadi) bu yerda
+ * chiqmaydi, chunki platforma egasiga maktabning ichki tafsiloti kerak emas.
+ */
+schoolsPlatformRoutes.get(
+  '/:id/stats',
+  ah(async (req, res) => {
+    const id = uuidParam(req);
+    const { rows: school } = await pool.query(`SELECT 1 FROM schools WHERE id = $1`, [id]);
+    if (!school[0]) throw notFound('Maktab topilmadi');
+
+    const [year, counts, money] = await Promise.all([
+      pool.query(
+        `SELECT name FROM academic_years WHERE school_id = $1 AND is_current`,
+        [id],
+      ),
+      pool.query(
+        `SELECT
+           (SELECT count(*)::int FROM students WHERE school_id = $1 AND status = 'active')     AS students,
+           (SELECT count(*)::int FROM classes  WHERE school_id = $1)                            AS classes,
+           (SELECT count(*)::int FROM users    WHERE school_id = $1 AND is_active)              AS staff,
+           (SELECT count(*)::int FROM users    WHERE school_id = $1 AND is_active AND role = 'teacher') AS teachers`,
+        [id],
+      ),
+      pool.query(
+        `SELECT
+           COALESCE((SELECT SUM(p.amount) FROM payments p
+                      WHERE p.school_id = $1
+                        AND date_trunc('month', p.paid_at) = date_trunc('month', now())), 0) AS this_month,
+           COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i.school_id = $1), 0)        AS billed,
+           COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa
+                      WHERE pa.school_id = $1), 0)                                           AS collected`,
+        [id],
+      ),
+    ]);
+
+    const billed = Number(money.rows[0].billed);
+    const collected = Number(money.rows[0].collected);
+    res.json({
+      stats: {
+        currentYear: year.rows[0]?.name ?? null,
+        ...counts.rows[0],
+        thisMonth: Number(money.rows[0].this_month),
+        billed,
+        collected,
+        debt: billed - collected,
+      },
+    });
+  }),
+);
+
 const patchSchoolSchema = z.object({
   name: z.string().min(2).optional(),
   region: z.string().optional(),

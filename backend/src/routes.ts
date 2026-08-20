@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from './middleware/auth.js';
+import { authenticate, platformReadOnly } from './middleware/auth.js';
 import { resolveTenant } from './middleware/tenant.js';
 import { pool } from './db/pool.js';
 import { ah } from './utils/http.js';
@@ -32,15 +32,16 @@ api.get('/me', (req, res) => {
 });
 
 api.use('/schools', schoolsPlatformRoutes); // faqat superadmin
-api.use('/school', schoolRoutes);
-api.use('/years', yearsRoutes);
+api.use('/school', platformReadOnly, schoolRoutes);
+api.use('/years', platformReadOnly, yearsRoutes);
+// Xodimlar — superadmin uchun ochiq: maktabni ishga tushirish platforma ishi.
 api.use('/users', usersRoutes);
-api.use('/classes', classesRoutes);
-api.use('/students', studentsRoutes);
-api.use('/attendance', attendanceRoutes);
-api.use('/invoices', invoicesRoutes);
-api.use('/payments', paymentsRoutes);
-api.use('/debtors', debtorsRoutes);
+api.use('/classes', platformReadOnly, classesRoutes);
+api.use('/students', platformReadOnly, studentsRoutes);
+api.use('/attendance', platformReadOnly, attendanceRoutes);
+api.use('/invoices', platformReadOnly, invoicesRoutes);
+api.use('/payments', platformReadOnly, paymentsRoutes);
+api.use('/debtors', platformReadOnly, debtorsRoutes);
 api.use('/audit', auditRoutes);
 api.use('/dashboard', dashboardRoutes);
 

@@ -36,6 +36,25 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
 };
 
 /** Rolga qarab cheklash: requireRole('admin', 'manager') */
+/**
+ * Platforma egasi maktabning ichki ishlariga aralashmaydi.
+ *
+ * Superadmin qo'llab-quvvatlash uchun maktab ma'lumotini KO'RA oladi, lekin
+ * o'zgartira olmaydi: sinf ochish, o'quvchi kiritish, davomat belgilash,
+ * to'lov yozish — bularning hammasi maktabning o'z ishi. Xodimlar boshqaruvi
+ * va platforma yo'llari bundan mustasno (maktabni ishga tushirish biz orqali).
+ *
+ * requireRole superadminni har qanday tekshiruvdan o'tkazib yuboradi, shuning
+ * uchun chegara aynan shu yerda — yo'l darajasida — qo'yiladi.
+ */
+export const platformReadOnly: RequestHandler = (req, _res, next) => {
+  if (req.user?.role !== 'superadmin') return next();
+  if (req.method === 'GET' || req.method === 'HEAD') return next();
+  return next(
+    forbidden("Platforma administratori maktab ma'lumotini o'zgartira olmaydi"),
+  );
+};
+
 export const requireRole =
   (...roles: Role[]): RequestHandler =>
   (req, _res, next) => {

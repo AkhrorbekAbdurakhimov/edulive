@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useReadOnly } from '../lib/auth';
 import { api } from '../lib/api';
 import { EmptyState, ErrorState, Modal, TableSkeleton, initials } from '../components/ui';
 
@@ -59,6 +60,7 @@ export default function Attendance() {
 }
 
 function TakePanel({ classId, onDate }: { classId: string; onDate: string }) {
+  const readOnly = useReadOnly();
   const qc = useQueryClient();
   const [marks, setMarks] = useState<Record<string, Status>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -192,6 +194,11 @@ function TakePanel({ classId, onDate }: { classId: string; onDate: string }) {
 
       {errMsg && <p className="hint" style={{ marginBottom: 12 }}>{errMsg}</p>}
 
+      {readOnly ? (
+        <p className="muted">
+          Ko'rish rejimi — davomatni maktab xodimlari belgilaydi.
+        </p>
+      ) : (
       <div className="row">
         <button className="btn btn-secondary" onClick={() => take.mutate()} disabled={take.isPending}>
           {take.isPending ? 'Saqlanmoqda…' : 'Saqlash (tasdiqlamasdan)'}
@@ -202,6 +209,7 @@ function TakePanel({ classId, onDate }: { classId: string; onDate: string }) {
           </button>
         )}
       </div>
+      )}
 
       {confirmOpen && (
         <Modal title="Davomatni tasdiqlash" onClose={() => setConfirmOpen(false)}>

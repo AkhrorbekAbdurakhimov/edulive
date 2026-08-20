@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import { useReadOnly } from '../lib/auth';
 import { api, date, money } from '../lib/api';
 import { ErrorState, Modal, TableSkeleton } from '../components/ui';
 
@@ -22,6 +23,7 @@ const fmtNum = (v: string) => v.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))
 
 export default function Payments() {
   const [params] = useSearchParams();
+  const readOnly = useReadOnly();
   const qc = useQueryClient();
   const [studentId, setStudentId] = useState(params.get('studentId') ?? '');
   const [amount, setAmount] = useState('');
@@ -91,15 +93,27 @@ export default function Payments() {
       <div className="page-head">
         <h1>To'lovlar</h1>
         <div className="grow" />
-        <button className="btn btn-secondary sm" onClick={() => generate.mutate()} disabled={generate.isPending}>
-          {generate.isPending ? 'Chiqarilmoqda…' : 'Oylik hisoblarni chiqarish'}
-        </button>
-        {generate.data && (
-          <span className="save-note">{generate.data.created} ta yangi hisob</span>
+        {!readOnly && (
+          <>
+            <button className="btn btn-secondary sm" onClick={() => generate.mutate()} disabled={generate.isPending}>
+              {generate.isPending ? 'Chiqarilmoqda…' : 'Oylik hisoblarni chiqarish'}
+            </button>
+            {generate.data && (
+              <span className="save-note">{generate.data.created} ta yangi hisob</span>
+            )}
+          </>
         )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(260px, 340px)', gap: 16, alignItems: 'start' }}>
+        {readOnly ? (
+          <div className="card card-pad">
+            <h2>To'lov qabul qilish</h2>
+            <p className="muted" style={{ marginTop: 8 }}>
+              Ko'rish rejimi — to'lovni maktab xodimlari qabul qiladi.
+            </p>
+          </div>
+        ) : (
         <form className="card card-pad" onSubmit={submit}>
           <h2>To'lov qabul qilish</h2>
           <div className="form-grid">
@@ -140,6 +154,7 @@ export default function Payments() {
             <button className="btn btn-primary" disabled={!studentId || amountNum <= 0}>Davom etish</button>
           </div>
         </form>
+        )}
 
         <div className="card card-pad">
           <h2>Hisob-kitob</h2>

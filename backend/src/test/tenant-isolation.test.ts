@@ -141,3 +141,33 @@ test('oddiy admin platforma yo\'llariga kira olmaydi', async () => {
   const { status } = await api('GET', '/schools', undefined, A.adminToken);
   assert.equal(status, 403);
 });
+
+test("superadmin maktab ma'lumotini o'qiydi, lekin o'zgartira olmaydi", async () => {
+  const hdr = { 'X-School-Id': A.schoolId };
+
+  // O'qish — qo'llab-quvvatlash uchun ochiq.
+  for (const path of ['/students', '/classes', '/debtors']) {
+    const { status } = await api('GET', path, undefined, superToken, hdr);
+    assert.equal(status, 200, `GET ${path} superadmin uchun ochiq bo'lishi kerak`);
+  }
+
+  // Yozish — maktabning o'z ishi, platforma aralashmaydi.
+  const writes: Array<[string, string, unknown]> = [
+    ['POST', '/classes', { grade: 5, letter: 'Z', monthlyFee: 100000 }],
+    ['POST', '/students', { lastName: 'Testov', firstName: 'Test' }],
+    ['POST', '/years', { name: '2099-2100', startsOn: '2099-09-01', endsOn: '2100-05-31' }],
+    ['PATCH', '/school/settings', { payment_due_day: 15 }],
+  ];
+  for (const [method, path, body] of writes) {
+    const { status } = await api(method, path, body, superToken, hdr);
+    assert.equal(status, 403, `${method} ${path} superadmin uchun yopiq bo'lishi kerak`);
+  }
+
+  // Xodimlar bundan mustasno — maktabni ishga tushirish platforma ishi.
+  const staff = await api(
+    'POST', '/users',
+    { fullName: 'Platforma Qo\'shgan Xodim', phone: '+998911111199', role: 'teacher', password: 'parol12345' },
+    superToken, hdr,
+  );
+  assert.equal(staff.status, 201, 'superadmin xodim qo\'sha olishi kerak');
+});

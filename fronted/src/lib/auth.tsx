@@ -72,6 +72,17 @@ export function roleLabel(role: User['role'] | undefined): string {
   }
 }
 
+/**
+ * Platforma egasi maktabning ichki ishlariga aralashmaydi: ko'ra oladi,
+ * o'zgartira olmaydi. Backend ham shu yo'llarda 403 qaytaradi
+ * (middleware/auth.ts -> platformReadOnly), bu esa faqat interfeys tomoni —
+ * ishlamaydigan tugmani ko'rsatmaslik uchun.
+ */
+export function useReadOnly(): boolean {
+  const { user } = useAuth();
+  return user?.role === 'superadmin';
+}
+
 export function useAuth(): AuthCtx {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error('AuthProvider ichida ishlatilishi kerak');

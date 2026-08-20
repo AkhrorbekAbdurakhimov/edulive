@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useReadOnly } from '../lib/auth';
 import { api, date, money } from '../lib/api';
 import { ErrorState, TableSkeleton, initials, invoiceChip } from '../components/ui';
 
@@ -22,6 +23,7 @@ const REL: Record<string, string> = { father: 'Otasi', mother: 'Onasi', guardian
 
 export default function StudentCard() {
   const { id } = useParams<{ id: string }>();
+  const readOnly = useReadOnly();
   const navigate = useNavigate();
 
   const card = useQuery({
@@ -63,7 +65,9 @@ export default function StudentCard() {
               {(s.discount_percent ?? 0) > 0 && <> · chegirma {s.discount_percent}% ({s.discount_reason})</>}
             </div>
           </div>
-          <Link to={`/payments?studentId=${s.id}`} className="btn btn-primary">To'lov qabul qilish</Link>
+          {!readOnly && (
+            <Link to={`/payments?studentId=${s.id}`} className="btn btn-primary">To'lov qabul qilish</Link>
+          )}
         </div>
       </div>
 

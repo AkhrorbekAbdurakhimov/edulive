@@ -221,6 +221,23 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .check-row .help { display: block; font-size: 12px; color: var(--t3); font-weight: 400; }
 .check-row > span { font-weight: 500; font-size: 14px; }
 
+/* O'quv yili paneli — sinflar shunga bog'langani uchun doim ko'rinib turadi. */
+.year-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px; margin-bottom: 16px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-card);
+}
+.year-bar .grow { flex: 1; }
+
+/* Platforma egasi maktab ichida — ko'rish rejimi. Ogohlantirish emas,
+   shuning uchun sariq banner emas, neytral. */
+.readonly-banner {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 24px; font-size: 13px;
+  background: var(--surface-3); color: var(--t2);
+  border-bottom: 1px solid var(--border);
+}
+
 /* ---------------------------------------------------------------- misc */
 .row { display: flex; align-items: center; gap: 12px; }
 .muted { color: var(--t2); font-size: 13px; }

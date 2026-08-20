@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { EmptyState, ErrorState, Modal, TableSkeleton } from '../components/ui';
+import { useReadOnly } from '../lib/auth';
 
 interface StudentRow {
   id: string;
@@ -18,6 +19,7 @@ export default function Students() {
   const [q, setQ] = useState('');
   const [classId, setClassId] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const readOnly = useReadOnly();
   const navigate = useNavigate();
 
   const classes = useQuery({
@@ -42,7 +44,9 @@ export default function Students() {
         <h1>O'quvchilar</h1>
         {students.data && <span className="muted num">{students.data.total} ta</span>}
         <div className="grow" />
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ Yangi o'quvchi</button>
+        {!readOnly && (
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ Yangi o'quvchi</button>
+        )}
       </div>
 
       <div className="row" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
@@ -65,7 +69,7 @@ export default function Students() {
           <EmptyState
             title="O'quvchi topilmadi"
             text={q || classId ? "Filtrni o'zgartirib ko'ring" : "Birinchi o'quvchini qo'shing"}
-            action={<button className="btn btn-primary sm" onClick={() => setShowCreate(true)}>+ Yangi o'quvchi</button>}
+            action={readOnly ? undefined : <button className="btn btn-primary sm" onClick={() => setShowCreate(true)}>+ Yangi o'quvchi</button>}
           />
         ) : (
           <table className="tbl">

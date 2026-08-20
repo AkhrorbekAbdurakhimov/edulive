@@ -9,6 +9,7 @@ interface NavItem { to: string; label: string; icon: string }
 
 const SCHOOL_NAV: NavItem[] = [
   { to: '/dashboard', label: 'Boshqaruv', icon: '▦' },
+  { to: '/classes', label: 'Sinflar', icon: '▤' },
   { to: '/students', label: "O'quvchilar", icon: '👥' },
   { to: '/attendance', label: 'Davomat', icon: '✓' },
   { to: '/payments', label: "To'lovlar", icon: '₮' },
@@ -155,6 +156,15 @@ export function Layout({ children }: { children: ReactNode }) {
             Chiqish
           </button>
         </header>
+
+        {/* Nega tugmalar yo'q — bir joyda tushuntiriladi. Backend ham shu
+            chegarani majburlaydi (middleware/auth.ts -> platformReadOnly). */}
+        {isSuper && schoolId && (
+          <div className="readonly-banner" role="status">
+            <span aria-hidden>👁</span>
+            Ko'rish rejimi — maktab ma'lumotini o'zgartira olmaysiz. Xodimlar boshqaruvi ochiq.
+          </div>
+        )}
 
         <main>{children}</main>
 
