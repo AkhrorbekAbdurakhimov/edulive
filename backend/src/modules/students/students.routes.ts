@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { pool, tx, type Db } from '../../db/pool.js';
+import { pool, tx } from '../../db/pool.js';
 import { requireRole } from '../../middleware/auth.js';
 import { requireTenant } from '../../middleware/tenant.js';
 import { audit } from '../audit/audit.service.js';
@@ -8,6 +8,7 @@ import { getCurrentYear } from '../schools/schools.service.js';
 import { assertClassAccess } from '../classes/classes.service.js';
 import { badRequest, conflict, forbidden, notFound } from '../../utils/errors.js';
 import { ah } from '../../utils/http.js';
+import { linkParent } from './students.service.js';
 import { parse, uuidParam } from '../../utils/validate.js';
 
 export const studentsRoutes = Router();
@@ -24,28 +25,6 @@ const parentSchema = z.object({
   }),
 });
 
-/** Ota-onani telefon bo'yicha topadi yoki yaratadi va o'quvchiga bog'laydi. */
-async function linkParent(
-  db: Db,
-  schoolId: string,
-  studentId: string,
-  p: z.infer<typeof parentSchema>,
-  isPrimary: boolean,
-): Promise<string> {
-  const { rows } = await db.query<{ id: string }>(
-    `INSERT INTO parents (school_id, full_name, phone, relation)
-     VALUES ($1,$2,$3,$4)
-     ON CONFLICT (school_id, phone) DO UPDATE SET full_name = EXCLUDED.full_name
-     RETURNING id`,
-    [schoolId, p.fullName, p.phone, p.relation],
-  );
-  await db.query(
-    `INSERT INTO student_parents (student_id, parent_id, is_primary)
-     VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-    [studentId, rows[0].id, isPrimary],
-  );
-  return rows[0].id;
-}
 
 // ---------------------------------------------------------------- ro'yxat
 studentsRoutes.get(

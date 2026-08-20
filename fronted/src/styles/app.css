@@ -309,3 +309,11 @@ table.tbl { width: 100%; border-collapse: collapse; }
   grid-template-columns: minmax(300px, 1fr) minmax(260px, 340px);
 }
 @media (max-width: 900px) { .pay-grid { grid-template-columns: 1fr; } }
+
+/* Excel import bosqichlari va xato ro'yxati */
+.import-steps { margin: 0 0 4px; padding-left: 20px; display: grid; gap: 14px; }
+.import-steps li::marker { color: var(--t3); font-weight: 600; }
+.import-steps p { margin: 4px 0 8px; font-size: 13px; }
+.import-errors { max-height: 240px; overflow-y: auto; margin-top: 12px; }
+.import-errors .tbl td { height: 36px; font-size: 13px; }
+.import-errors .tbl th { position: static; }

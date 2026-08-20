@@ -8,6 +8,7 @@ import { schoolsPlatformRoutes, schoolRoutes, yearsRoutes } from './modules/scho
 import { usersRoutes } from './modules/users/users.routes.js';
 import { classesRoutes } from './modules/classes/classes.routes.js';
 import { studentsRoutes } from './modules/students/students.routes.js';
+import { studentsImportRoutes } from './modules/students/students.import.routes.js';
 import { attendanceRoutes } from './modules/attendance/attendance.routes.js';
 import { invoicesRoutes, paymentsRoutes } from './modules/payments/payments.routes.js';
 import { debtorsRoutes } from './modules/debtors/debtors.routes.js';
@@ -37,6 +38,9 @@ api.use('/years', platformReadOnly, yearsRoutes);
 // Xodimlar — superadmin uchun ochiq: maktabni ishga tushirish platforma ishi.
 api.use('/users', usersRoutes);
 api.use('/classes', platformReadOnly, classesRoutes);
+// Import /students/:id dan OLDIN turishi shart — aks holda "import" so'zi
+// id sifatida talqin qilinib, 400 qaytarilardi.
+api.use('/students/import', platformReadOnly, studentsImportRoutes);
 api.use('/students', platformReadOnly, studentsRoutes);
 api.use('/attendance', platformReadOnly, attendanceRoutes);
 api.use('/invoices', platformReadOnly, invoicesRoutes);

@@ -51,3 +51,23 @@ export const monthLabel = (d: string) => {
   const [y, m] = d.split('-');
   return `${MONTHS[Number(m) - 1] ?? m} ${y}`;
 };
+
+/**
+ * Serverdan fayl yuklab olish. Oddiy <a href> ishlamaydi: token localStorage'da,
+ * cookie'da emas — shuning uchun so'rov axios orqali ketadi.
+ */
+export async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  const res = await api.get(path, { responseType: 'blob' });
+  const cd = String(res.headers['content-disposition'] ?? '');
+  const name = /filename="?([^"';]+)"?/.exec(cd)?.[1] ?? fallbackName;
+
+  const url = URL.createObjectURL(res.data as Blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Darhol revoke qilinsa ba'zi brauzerlarda yuklab olish uzilib qoladi.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
