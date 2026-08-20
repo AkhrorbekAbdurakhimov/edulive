@@ -12,7 +12,7 @@ interface CardData {
     monthly_fee: number | null; discount_percent: number | null; discount_reason: string | null;
   };
   parents: Array<{ id: string; full_name: string; phone: string; relation: string | null; is_primary: boolean }>;
-  finance: { invoiced: number; paid: number; outstanding: number };
+  finance: { invoiced: number; paid: number; outstanding: number; advance: number };
 }
 interface InvoiceRow {
   id: string; period_month: string; amount: number; discount: number;
@@ -83,6 +83,12 @@ export default function StudentCard() {
         <div className="card stat-tile">
           <div className="label">Qoldiq qarz</div>
           <div className="value num" style={{ fontSize: 24 }}>{money(card.data.finance.outstanding)}</div>
+          {card.data.finance.advance > 0 && (
+            /* Hisobga bog'lanmagan pul — bo'lmasa to'langan summa ekranda yo'qolgandek tuyuladi. */
+            <div className="muted" style={{ marginTop: 6 }}>
+              Avans: <span className="num">{money(card.data.finance.advance)}</span>
+            </div>
+          )}
         </div>
       </div>
 

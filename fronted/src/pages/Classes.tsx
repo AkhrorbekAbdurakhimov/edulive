@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, money, date } from '../lib/api';
+import { api, money, date, fmtNum, parseAmount } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { Chip, EmptyState, ErrorState, Modal, TableSkeleton } from '../components/ui';
 
@@ -28,6 +28,7 @@ export default function Classes() {
   const [showCreate, setShowCreate] = useState(false);
   const [showYears, setShowYears] = useState(false);
   const [editing, setEditing] = useState<ClassRow | null>(null);
+  const [deleting, setDeleting] = useState<ClassRow | null>(null);
 
   // Superadmin ataylab yo'q: maktab ichidagi o'zgarishlar maktabning o'z ishi.
   const canManage = user?.role === 'admin';
@@ -131,6 +132,9 @@ export default function Classes() {
                   {canManage && (
                     <td data-label="Amallar">
                       <button className="btn btn-secondary sm" onClick={() => setEditing(c)}>Tahrirlash</button>
+                      {c.student_count === 0 && (
+                        <button className="btn btn-ghost sm" onClick={() => setDeleting(c)}>O'chirish</button>
+                      )}
                     </td>
                   )}
                 </tr>
@@ -146,6 +150,7 @@ export default function Classes() {
       {editing && (
         <ClassModal cls={editing} teachers={teachers.data ?? []} onClose={() => setEditing(null)} />
       )}
+      {deleting && <DeleteClassModal cls={deleting} onClose={() => setDeleting(null)} />}
       {showYears && <YearsModal years={years.data ?? []} onClose={() => setShowYears(false)} />}
     </div>
   );
@@ -159,7 +164,7 @@ function ClassModal({ cls, teachers, onClose }: {
   const [form, setForm] = useState({
     grade: cls ? String(cls.grade) : '1',
     letter: cls?.letter ?? 'A',
-    monthlyFee: cls ? String(cls.monthly_fee) : '',
+    monthlyFee: cls ? fmtNum(String(Math.round(cls.monthly_fee))) : '',
     teacherId: cls?.homeroom_teacher_id ?? '',
   });
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
@@ -167,7 +172,7 @@ function ClassModal({ cls, teachers, onClose }: {
 
   const save = useMutation({
     mutationFn: async () => {
-      const fee = Number(form.monthlyFee);
+      const fee = parseAmount(form.monthlyFee);
       if (cls) {
         return (await api.patch(`/classes/${cls.id}`, {
           letter: form.letter.trim(),
@@ -190,13 +195,12 @@ function ClassModal({ cls, teachers, onClose }: {
     },
   });
 
-  const feeNum = Number(form.monthlyFee);
-  const badFee = form.monthlyFee !== '' && (!Number.isFinite(feeNum) || feeNum < 0);
+  const feeNum = parseAmount(form.monthlyFee);
   const errMsg = (save.error as any)?.response?.data?.error;
 
   return (
     <Modal title={cls ? `${cls.name} sinfi` : 'Yangi sinf'} onClose={onClose}>
-      <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (!badFee) save.mutate(); }}>
+      <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (feeNum > 0) save.mutate(); }}>
         <div className="form-grid">
           <div className="field">
             <label>Sinf</label>
@@ -214,12 +218,11 @@ function ClassModal({ cls, teachers, onClose }: {
           <div className="field">
             <label>Oylik to'lov</label>
             <input
-              className={`input num${badFee ? ' err' : ''}`} value={form.monthlyFee}
-              onChange={set('monthlyFee')} inputMode="numeric" required
+              className="input num" value={form.monthlyFee} inputMode="numeric" required
+              placeholder="1 500 000"
+              onChange={(e) => setForm((f) => ({ ...f, monthlyFee: fmtNum(e.target.value) }))}
             />
-            {badFee
-              ? <span className="hint">Faqat musbat son</span>
-              : <span className="help">So'mda, butun son — masalan 1500000</span>}
+            <span className="help">So'mda — masalan 1 500 000</span>
           </div>
           <div className="field">
             <label>Sinf rahbari</label>
@@ -233,7 +236,7 @@ function ClassModal({ cls, teachers, onClose }: {
         {errMsg && <p className="hint" style={{ marginTop: 10 }}>{errMsg}</p>}
         <div className="actions">
           <button type="button" className="btn btn-secondary" onClick={onClose}>Bekor qilish</button>
-          <button className="btn btn-primary" disabled={save.isPending}>
+          <button className="btn btn-primary" disabled={feeNum <= 0 || save.isPending}>
             {save.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
           </button>
         </div>
@@ -369,5 +372,39 @@ function AddYearForm({ hasAny, onDone, onCancel }: {
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Sinfni o'chirish. Tugma faqat o'quvchisi yo'q sinfda ko'rinadi, lekin
+ * yakuniy qaror backendda: sinfda o'tmishdagi o'quvchilar, davomat yoki
+ * baholar bo'lsa u ham rad etadi (classes ga oltita jadval CASCADE bilan
+ * bog'langan — o'chirish tarixni ham olib ketardi).
+ */
+function DeleteClassModal({ cls, onClose }: { cls: ClassRow; onClose: () => void }) {
+  const qc = useQueryClient();
+  const del = useMutation({
+    mutationFn: async () => (await api.delete(`/classes/${cls.id}`)).data,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['classes'] }); onClose(); },
+  });
+  const errMsg = (del.error as any)?.response?.data?.error;
+
+  return (
+    <Modal title={`${cls.name} sinfini o'chirish`} onClose={onClose}>
+      <p>
+        <strong>{cls.name}</strong> sinfi o'chiriladi. Bu amalni qaytarib bo'lmaydi.
+      </p>
+      <p className="muted">
+        Sinfda o'quvchi yo'q. Agar unda ilgari o'quvchi bo'lgan, davomat olingan
+        yoki baho qo'yilgan bo'lsa, o'chirish rad etiladi — tarix saqlanib qoladi.
+      </p>
+      {errMsg && <p className="hint">{errMsg}</p>}
+      <div className="actions">
+        <button className="btn btn-secondary" onClick={onClose}>Bekor qilish</button>
+        <button className="btn btn-danger" onClick={() => del.mutate()} disabled={del.isPending}>
+          {del.isPending ? "O'chirilmoqda…" : "O'chirish"}
+        </button>
+      </div>
+    </Modal>
   );
 }

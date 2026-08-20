@@ -156,3 +156,47 @@ test("admin o'zini o'chira olmaydi", async () => {
   assert.equal(status, 400);
   assert.match(body.error, /o'zingizni/i);
 });
+
+test("sinf o'chirish: bo'sh sinf o'chadi, o'quvchisi bori o'chmaydi", async () => {
+  // 1) Bo'sh sinf — o'chadi
+  const empty = await api('POST', '/classes', { grade: 11, letter: 'X', monthlyFee: 500000 }, school.adminToken);
+  assert.equal(empty.status, 201);
+  const del = await api('DELETE', `/classes/${empty.body.class.id}`, undefined, school.adminToken);
+  assert.equal(del.status, 200);
+  const gone = await api('GET', `/classes/${empty.body.class.id}`, undefined, school.adminToken);
+  assert.equal(gone.status, 404);
+
+  // 2) O'quvchisi bor sinf — o'chmaydi va ma'lumot joyida qoladi
+  const busyCls = await api('POST', '/classes', { grade: 11, letter: 'B', monthlyFee: 500000 }, school.adminToken);
+  const busyId = busyCls.body.class.id;
+  const st = await api(
+    'POST', '/students',
+    { lastName: 'Sinfda', firstName: 'Bor', classId: busyId },
+    school.adminToken,
+  );
+  assert.equal(st.status, 201);
+
+  const busy = await api('DELETE', `/classes/${busyId}`, undefined, school.adminToken);
+  assert.equal(busy.status, 409);
+  assert.match(busy.body.error, /o'quvchi/);
+  const still = await pool.query(`SELECT 1 FROM classes WHERE id = $1`, [busyId]);
+  assert.equal(still.rowCount, 1, "sinf o'chmagan bo'lishi kerak");
+});
+
+test("sinf o'chirish: tarixi bor sinf o'chmaydi (davomat kaskad bilan ketmasin)", async () => {
+  const cls = await api('POST', '/classes', { grade: 10, letter: 'Y', monthlyFee: 400000 }, school.adminToken);
+  const classId = cls.body.class.id;
+
+  // O'quvchini biriktirib, keyin chiqaramiz: hozir o'quvchi yo'q, lekin tarix bor.
+  const st = await api('POST', '/students', { lastName: 'Tarixiy', firstName: 'Talaba', classId }, school.adminToken);
+  assert.equal(st.status, 201);
+  await pool.query(`UPDATE enrollments SET ends_on = CURRENT_DATE WHERE class_id = $1`, [classId]);
+
+  const active = await api('GET', '/classes', undefined, school.adminToken);
+  const row = active.body.items.find((c: any) => c.id === classId);
+  assert.equal(row.student_count, 0, 'joriy o\'quvchi qolmagan bo\'lishi kerak');
+
+  const del = await api('DELETE', `/classes/${classId}`, undefined, school.adminToken);
+  assert.equal(del.status, 409, 'tarixi bor sinf o\'chirilmasligi kerak');
+  assert.match(del.body.error, /tarix/);
+});

@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useReadOnly } from '../lib/auth';
-import { api, date, money } from '../lib/api';
+import { api, date, money, fmtNum, parseAmount, monthLabel } from '../lib/api';
 import { ErrorState, Modal, TableSkeleton } from '../components/ui';
 
 interface StudentRow { id: string; last_name: string; first_name: string; class_name: string | null }
@@ -10,7 +10,11 @@ interface PaymentRow {
   id: string; student_name: string; amount: number; provider: string;
   paid_at: string; receipt_no: string | null; received_by: string | null;
 }
-interface Finance { invoiced: number; paid: number; outstanding: number }
+interface Finance { invoiced: number; paid: number; outstanding: number; advance: number }
+interface InvoiceRow {
+  id: string; period_month: string; amount: number; discount: number;
+  outstanding: number; status: string; due_date: string;
+}
 
 const PROVIDERS = [
   { v: 'cash', label: 'Naqd' },
@@ -18,8 +22,6 @@ const PROVIDERS = [
   { v: 'payme', label: 'Payme' },
   { v: 'transfer', label: "O'tkazma" },
 ] as const;
-
-const fmtNum = (v: string) => v.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
 export default function Payments() {
   const [params] = useSearchParams();
@@ -29,6 +31,7 @@ export default function Payments() {
   const [amount, setAmount] = useState('');
   const [provider, setProvider] = useState<string>('cash');
   const [note, setNote] = useState('');
+  const [picked, setPicked] = useState<string[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<string | null>(null);
 
@@ -45,26 +48,54 @@ export default function Payments() {
     enabled: !!studentId,
   });
 
+  // To'lanmagan oylar — kassir qaysi oy uchun pul olayotganini belgilaydi.
+  const invoices = useQuery({
+    queryKey: ['student-invoices', studentId],
+    queryFn: async () =>
+      (await api.get<{ items: InvoiceRow[] }>(`/invoices?studentId=${studentId}&limit=50`)).data.items,
+    enabled: !!studentId,
+  });
+  const unpaid = useMemo(
+    () => (invoices.data ?? [])
+      .filter((i) => i.status !== 'paid' && i.status !== 'void' && i.outstanding > 0)
+      .sort((a, b) => a.period_month.localeCompare(b.period_month)),
+    [invoices.data],
+  );
+
   const paymentsToday = useQuery({
     queryKey: ['payments-log'],
     queryFn: async () =>
       (await api.get<{ items: PaymentRow[] }>('/payments?limit=20')).data.items,
   });
 
-  const amountNum = useMemo(() => Number(amount.replace(/\s/g, '')) || 0, [amount]);
+  // Oy belgilansa summa o'zi to'ladi; kassir uni keyin qo'lda o'zgartirishi mumkin
+  // (qisman to'lov). Tanlov tartibi saqlanadi — pul shu tartibda yoziladi.
+  const togglePicked = (inv: InvoiceRow) => {
+    setPicked((prev) => {
+      const next = prev.includes(inv.id) ? prev.filter((x) => x !== inv.id) : [...prev, inv.id];
+      const sum = unpaid.filter((i) => next.includes(i.id)).reduce((s, i) => s + i.outstanding, 0);
+      setAmount(sum ? fmtNum(String(Math.round(sum))) : '');
+      return next;
+    });
+  };
+
+  const amountNum = useMemo(() => parseAmount(amount), [amount]);
   const newBalance = (finance.data?.outstanding ?? 0) - amountNum;
 
   const pay = useMutation({
     mutationFn: async () =>
       (await api.post('/payments', {
         studentId, amount: amountNum, provider, note: note.trim() || undefined,
+        // Bo'sh bo'lsa backend eng eski qarzdan boshlab o'zi taqsimlaydi.
+        invoiceIds: picked.length ? picked : undefined,
       })).data,
     onSuccess: (data) => {
       setConfirmOpen(false);
       setLastReceipt(data.payment.receipt_no);
-      setAmount(''); setNote('');
+      setAmount(''); setNote(''); setPicked([]);
       qc.invalidateQueries({ queryKey: ['payments-log'] });
       qc.invalidateQueries({ queryKey: ['student-finance', studentId] });
+      qc.invalidateQueries({ queryKey: ['student-invoices', studentId] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
@@ -105,7 +136,7 @@ export default function Payments() {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(260px, 340px)', gap: 16, alignItems: 'start' }}>
+      <div className="pay-grid">
         {readOnly ? (
           <div className="card card-pad">
             <h2>To'lov qabul qilish</h2>
@@ -119,7 +150,10 @@ export default function Payments() {
           <div className="form-grid">
             <div className="field" style={{ gridColumn: '1 / -1' }}>
               <label>O'quvchi</label>
-              <select className="input" value={studentId} onChange={(e) => setStudentId(e.target.value)} required>
+              <select
+                className="input" value={studentId} required
+                onChange={(e) => { setStudentId(e.target.value); setPicked([]); setAmount(''); }}
+              >
                 <option value="">Tanlang…</option>
                 {students.data?.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -128,6 +162,37 @@ export default function Payments() {
                 ))}
               </select>
             </div>
+            {studentId && (
+              <div className="field" style={{ gridColumn: '1 / -1' }}>
+                <label>Qaysi oy uchun</label>
+                {invoices.isPending ? (
+                  <span className="skeleton" style={{ width: '60%' }} />
+                ) : unpaid.length === 0 ? (
+                  <span className="help">
+                    To'lanmagan oy yo'q — kiritilgan summa avans bo'lib qoladi va
+                    keyingi hisob chiqarilganda hisobga olinadi.
+                  </span>
+                ) : (
+                  <>
+                    <div className="month-picks">
+                      {unpaid.map((i) => (
+                        <label key={i.id} className={`month-pick${picked.includes(i.id) ? ' on' : ''}`}>
+                          <input
+                            type="checkbox" checked={picked.includes(i.id)}
+                            onChange={() => togglePicked(i)}
+                          />
+                          <span className="m">{monthLabel(i.period_month)}</span>
+                          <span className="num">{money(i.outstanding)}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <span className="help">
+                      Belgilamasangiz pul eng eski qarzdan boshlab avtomatik taqsimlanadi.
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
             <div className="field">
               <label>Summa (so'm)</label>
               <input
@@ -170,6 +235,17 @@ export default function Payments() {
                 <div className="muted">Joriy qarz</div>
                 <div className="num" style={{ fontSize: 24, fontWeight: 600 }}>{money(finance.data.outstanding)}</div>
               </div>
+              {finance.data.advance > 0 && (
+                /* Hisobga bog'lanmagan pul — hisob chiqarilgach o'zi yopiladi.
+                   Ko'rsatilmasa, to'langan pul ekranda yo'qolgandek tuyulardi. */
+                <div>
+                  <div className="muted">Avans (hisobga bog'lanmagan)</div>
+                  <div className="num" style={{ fontSize: 18, fontWeight: 600, color: 'var(--good-ink)' }}>
+                    {money(finance.data.advance)}
+                  </div>
+                  <span className="help">Keyingi hisob chiqarilganda avtomatik yopiladi</span>
+                </div>
+              )}
               <div>
                 <div className="muted">To'lov</div>
                 <div className="num" style={{ fontSize: 24, fontWeight: 600 }}>− {money(amountNum)}</div>

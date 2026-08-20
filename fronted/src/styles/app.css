@@ -290,3 +290,22 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .sheet .nav-item { padding: 12px; font-size: 15px; }
 
 @media (min-width: 768px) { .mobile-nav { display: none; } }
+
+/* To'lov formasidagi oy tanlagich — kassir qaysi oy uchun pul olayotganini
+   belgilaydi. Rang yolg'iz ma'no tashimaydi: belgi + oy nomi + summa birga. */
+.month-picks { display: flex; flex-direction: column; gap: 6px; }
+.month-pick {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface);
+}
+.month-pick .m { flex: 1; font-weight: 500; }
+.month-pick.on { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 8%, transparent); }
+
+/* To'lov sahifasi: forma + hisob-kitob paneli. Ikki ustun 560px talab qiladi,
+   shuning uchun tor ekranda ustma-ust tushadi — gorizontal scroll bo'lmasin. */
+.pay-grid {
+  display: grid; gap: 16px; align-items: start;
+  grid-template-columns: minmax(300px, 1fr) minmax(260px, 340px);
+}
+@media (max-width: 900px) { .pay-grid { grid-template-columns: 1fr; } }

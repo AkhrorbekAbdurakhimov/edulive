@@ -196,17 +196,27 @@ studentsRoutes.get(
          COALESCE(SUM(i.amount - i.discount) FILTER (WHERE i.status <> 'void'), 0) AS invoiced,
          COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa
                     JOIN invoices i2 ON i2.id = pa.invoice_id
-                   WHERE i2.student_id = $1 AND pa.school_id = $2), 0) AS allocated
+                   WHERE i2.student_id = $1 AND pa.school_id = $2), 0) AS allocated,
+         -- Hisobga bog'lanmagan pul ham ko'rinsin: aks holda hisob chiqarilmagan
+         -- paytda qabul qilingan to'lov ekranda umuman yo'qolib ketardi.
+         COALESCE((SELECT SUM(p.amount) FROM payments p
+                   WHERE p.student_id = $1 AND p.school_id = $2 AND p.status = 'confirmed'), 0) AS received
          FROM invoices i
         WHERE i.student_id = $1 AND i.school_id = $2`,
       [id, req.schoolId],
     );
-    const { invoiced, allocated } = finance.rows[0];
+    const { invoiced, allocated, received } = finance.rows[0];
 
     res.json({
       student,
       parents: parents.rows,
-      finance: { invoiced, paid: allocated, outstanding: invoiced - allocated },
+      finance: {
+        invoiced,
+        paid: allocated,
+        outstanding: invoiced - allocated,
+        // Hisobdan oldin to'langan yoki ortiqcha to'langan qism.
+        advance: received - allocated,
+      },
     });
   }),
 );

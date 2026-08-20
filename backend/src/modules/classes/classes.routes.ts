@@ -161,3 +161,53 @@ classesRoutes.patch(
     res.json({ class: rows[0] });
   }),
 );
+
+/**
+ * Sinfni o'chirish — faqat xato bilan ochilgan bo'sh sinf uchun.
+ *
+ * `classes` ga oltita jadval ON DELETE CASCADE bilan bog'langan
+ * (enrollments, attendance_sessions, attendance, grades, lessons,
+ * class_subject_teachers). Ya'ni tarixi bor sinfni o'chirish davomat va
+ * baholarni ham jimgina olib ketardi — shuning uchun tekshiruv "hozir
+ * o'quvchi bormi" dan kengroq: umuman tegilganmi.
+ *
+ * O'quv yili tugaganda sinf o'chirilmaydi — sinf academic_year_id ga
+ * bog'langan, keyingi yil uchun yangisi ochiladi va eskisi tarix bo'lib qoladi.
+ */
+classesRoutes.delete(
+  '/:id',
+  requireRole('admin'),
+  ah(async (req, res) => {
+    const id = uuidParam(req);
+    const { rows } = await pool.query(
+      `SELECT c.grade || '-' || c.letter AS name,
+              (SELECT count(*)::int FROM enrollments e
+                WHERE e.class_id = c.id AND e.ends_on IS NULL)            AS active,
+              (SELECT count(*)::int FROM enrollments e WHERE e.class_id = c.id)          AS ever,
+              (SELECT count(*)::int FROM attendance_sessions s WHERE s.class_id = c.id)  AS sessions,
+              (SELECT count(*)::int FROM grades g WHERE g.class_id = c.id)               AS grades
+         FROM classes c
+        WHERE c.id = $1 AND c.school_id = $2`,
+      [id, req.schoolId],
+    );
+    const c = rows[0];
+    if (!c) throw notFound('Sinf topilmadi');
+
+    if (c.active > 0) {
+      throw conflict(
+        `Sinfda ${c.active} ta o'quvchi bor — avval ularni boshqa sinfga o'tkazing`,
+      );
+    }
+    if (c.ever > 0 || c.sessions > 0 || c.grades > 0) {
+      throw conflict(
+        "Bu sinfda tarix bor (o'quvchilar, davomat yoki baholar) — o'chirib bo'lmaydi. " +
+        "Sinf o'quv yiliga bog'langan: keyingi yil uchun yangi sinf oching.",
+      );
+    }
+
+    await pool.query(`DELETE FROM classes WHERE id = $1 AND school_id = $2`, [id, req.schoolId]);
+    await audit(req, { action: 'class.delete', entity: 'class', entityId: id, before: { name: c.name } });
+
+    res.json({ ok: true });
+  }),
+);
