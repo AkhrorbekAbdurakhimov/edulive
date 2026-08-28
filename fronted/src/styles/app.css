@@ -317,3 +317,5 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .import-errors { max-height: 240px; overflow-y: auto; margin-top: 12px; }
 .import-errors .tbl td { height: 36px; font-size: 13px; }
 .import-errors .tbl th { position: static; }
+/* To'langan oy — tanlab bo'lmaydi, lekin yil ko'rinishi to'liq qolsin. */
+.month-pick.done { opacity: .65; cursor: default; }

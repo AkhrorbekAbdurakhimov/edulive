@@ -1,13 +1,15 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useReadOnly } from '../lib/auth';
 import { api, date, money } from '../lib/api';
 import { ErrorState, TableSkeleton, initials, invoiceChip } from '../components/ui';
+import { ArchiveModal, EditClassModal, EditInfoModal } from '../components/StudentEdit';
 
 interface CardData {
   student: {
     id: string; last_name: string; first_name: string; middle_name: string | null;
-    birth_date: string | null; status: string;
+    birth_date: string | null; gender: string | null; status: string;
     class_id: string | null; class_name: string | null;
     monthly_fee: number | null; discount_percent: number | null; discount_reason: string | null;
   };
@@ -25,6 +27,7 @@ export default function StudentCard() {
   const { id } = useParams<{ id: string }>();
   const readOnly = useReadOnly();
   const navigate = useNavigate();
+  const [editing, setEditing] = useState<null | 'info' | 'class' | 'archive'>(null);
 
   const card = useQuery({
     queryKey: ['student', id],
@@ -66,7 +69,11 @@ export default function StudentCard() {
             </div>
           </div>
           {!readOnly && (
-            <Link to={`/payments?studentId=${s.id}`} className="btn btn-primary">To'lov qabul qilish</Link>
+            <div className="row" style={{ flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary" onClick={() => setEditing('info')}>Tahrirlash</button>
+              <button className="btn btn-secondary" onClick={() => setEditing('class')}>Sinf va to'lov</button>
+              <Link to={`/payments?studentId=${s.id}`} className="btn btn-primary">To'lov qabul qilish</Link>
+            </div>
           )}
         </div>
       </div>
@@ -138,6 +145,20 @@ export default function StudentCard() {
           ))
         )}
       </div>
+
+      {!readOnly && s.status === 'active' && (
+        <div className="row" style={{ marginTop: 16, justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost sm" onClick={() => setEditing('archive')}>
+            O'quvchini arxivlash
+          </button>
+        </div>
+      )}
+
+      {editing === 'info' && <EditInfoModal s={s} onClose={() => setEditing(null)} />}
+      {editing === 'class' && <EditClassModal s={s} onClose={() => setEditing(null)} />}
+      {editing === 'archive' && (
+        <ArchiveModal id={s.id} name={fullName} onClose={() => setEditing(null)} onDone={() => navigate('/students')} />
+      )}
     </div>
   );
 }

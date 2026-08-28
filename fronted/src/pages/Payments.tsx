@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useReadOnly } from '../lib/auth';
 import { api, date, money, fmtNum, parseAmount, monthLabel } from '../lib/api';
-import { ErrorState, Modal, TableSkeleton } from '../components/ui';
+import { Chip, ErrorState, Modal, TableSkeleton } from '../components/ui';
 
 interface StudentRow { id: string; last_name: string; first_name: string; class_name: string | null }
 interface PaymentRow {
@@ -11,9 +11,14 @@ interface PaymentRow {
   paid_at: string; receipt_no: string | null; received_by: string | null;
 }
 interface Finance { invoiced: number; paid: number; outstanding: number; advance: number }
-interface InvoiceRow {
-  id: string; period_month: string; amount: number; discount: number;
-  outstanding: number; status: string; due_date: string;
+/** Jadval qatori: hisobi chiqarilmagan oyda `id` null, summa kutilayotgani. */
+interface ScheduleRow {
+  id: string | null;
+  period_month: string;      // YYYY-MM
+  status: string | null;
+  amount: number;
+  discount: number;
+  outstanding: number;
 }
 
 const PROVIDERS = [
@@ -48,19 +53,16 @@ export default function Payments() {
     enabled: !!studentId,
   });
 
-  // To'lanmagan oylar — kassir qaysi oy uchun pul olayotganini belgilaydi.
-  const invoices = useQuery({
-    queryKey: ['student-invoices', studentId],
+  // O'quv yilining HAR BIR oyi — hisobi chiqarilgani ham, chiqarilmagani ham.
+  // Faqat mavjud hisoblar ko'rsatilsa, ota-ona oldindan to'lay olmasdi.
+  const schedule = useQuery({
+    queryKey: ['student-schedule', studentId],
     queryFn: async () =>
-      (await api.get<{ items: InvoiceRow[] }>(`/invoices?studentId=${studentId}&limit=50`)).data.items,
+      (await api.get<{ items: ScheduleRow[] }>(`/invoices/schedule?studentId=${studentId}`)).data.items,
     enabled: !!studentId,
   });
-  const unpaid = useMemo(
-    () => (invoices.data ?? [])
-      .filter((i) => i.status !== 'paid' && i.status !== 'void' && i.outstanding > 0)
-      .sort((a, b) => a.period_month.localeCompare(b.period_month)),
-    [invoices.data],
-  );
+  const months = schedule.data ?? [];
+  const payable = useMemo(() => months.filter((m) => m.outstanding > 0), [months]);
 
   const paymentsToday = useQuery({
     queryKey: ['payments-log'],
@@ -70,10 +72,13 @@ export default function Payments() {
 
   // Oy belgilansa summa o'zi to'ladi; kassir uni keyin qo'lda o'zgartirishi mumkin
   // (qisman to'lov). Tanlov tartibi saqlanadi — pul shu tartibda yoziladi.
-  const togglePicked = (inv: InvoiceRow) => {
+  const togglePicked = (m: ScheduleRow) => {
     setPicked((prev) => {
-      const next = prev.includes(inv.id) ? prev.filter((x) => x !== inv.id) : [...prev, inv.id];
-      const sum = unpaid.filter((i) => next.includes(i.id)).reduce((s, i) => s + i.outstanding, 0);
+      const next = prev.includes(m.period_month)
+        ? prev.filter((x) => x !== m.period_month)
+        : [...prev, m.period_month];
+      const sum = payable.filter((i) => next.includes(i.period_month))
+        .reduce((s, i) => s + i.outstanding, 0);
       setAmount(sum ? fmtNum(String(Math.round(sum))) : '');
       return next;
     });
@@ -86,8 +91,12 @@ export default function Payments() {
     mutationFn: async () =>
       (await api.post('/payments', {
         studentId, amount: amountNum, provider, note: note.trim() || undefined,
-        // Bo'sh bo'lsa backend eng eski qarzdan boshlab o'zi taqsimlaydi.
-        invoiceIds: picked.length ? picked : undefined,
+        // Hisobi bor oy id bilan, hali chiqarilmagani oy nomi bilan ketadi —
+        // ikkinchisida backend hisobni o'zi yaratadi (oldindan to'lov).
+        // Bo'sh bo'lsa eng eski qarzdan boshlab avtomatik taqsimlanadi.
+        invoiceIds: picked.map((k) => months.find((m) => m.period_month === k)?.id)
+          .filter((x): x is string => !!x),
+        periodMonths: picked.filter((k) => !months.find((m) => m.period_month === k)?.id),
       })).data,
     onSuccess: (data) => {
       setConfirmOpen(false);
@@ -95,7 +104,7 @@ export default function Payments() {
       setAmount(''); setNote(''); setPicked([]);
       qc.invalidateQueries({ queryKey: ['payments-log'] });
       qc.invalidateQueries({ queryKey: ['student-finance', studentId] });
-      qc.invalidateQueries({ queryKey: ['student-invoices', studentId] });
+      qc.invalidateQueries({ queryKey: ['student-schedule', studentId] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
@@ -165,29 +174,40 @@ export default function Payments() {
             {studentId && (
               <div className="field" style={{ gridColumn: '1 / -1' }}>
                 <label>Qaysi oy uchun</label>
-                {invoices.isPending ? (
+                {schedule.isPending ? (
                   <span className="skeleton" style={{ width: '60%' }} />
-                ) : unpaid.length === 0 ? (
+                ) : months.length === 0 ? (
                   <span className="help">
-                    To'lanmagan oy yo'q — kiritilgan summa avans bo'lib qoladi va
-                    keyingi hisob chiqarilganda hisobga olinadi.
+                    O'quv yili belgilanmagan yoki o'quvchi sinfga biriktirilmagan —
+                    kiritilgan summa avans bo'lib qoladi.
                   </span>
                 ) : (
                   <>
                     <div className="month-picks">
-                      {unpaid.map((i) => (
-                        <label key={i.id} className={`month-pick${picked.includes(i.id) ? ' on' : ''}`}>
-                          <input
-                            type="checkbox" checked={picked.includes(i.id)}
-                            onChange={() => togglePicked(i)}
-                          />
-                          <span className="m">{monthLabel(i.period_month)}</span>
-                          <span className="num">{money(i.outstanding)}</span>
-                        </label>
-                      ))}
+                      {months.map((m) => {
+                        const paid = m.outstanding <= 0;
+                        const on = picked.includes(m.period_month);
+                        return (
+                          <label
+                            key={m.period_month}
+                            className={`month-pick${on ? ' on' : ''}${paid ? ' done' : ''}`}
+                          >
+                            <input
+                              type="checkbox" checked={on} disabled={paid}
+                              onChange={() => togglePicked(m)}
+                            />
+                            <span className="m">{monthLabel(`${m.period_month}-01`)}</span>
+                            {paid
+                              ? <Chip kind="good">To'langan</Chip>
+                              : <span className="num">{money(m.outstanding)}</span>}
+                          </label>
+                        );
+                      })}
                     </div>
                     <span className="help">
-                      Belgilamasangiz pul eng eski qarzdan boshlab avtomatik taqsimlanadi.
+                      Kelgusi oylarni ham belgilash mumkin — oldindan to'lov uchun hisob
+                      o'sha zahoti ochiladi. Belgilamasangiz pul eng eski qarzdan
+                      boshlab taqsimlanadi.
                     </span>
                   </>
                 )}

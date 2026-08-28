@@ -27,6 +27,15 @@ invoicesRoutes.post(
 
     const result = await tx(async (client) => {
       const year = await getCurrentYear(req.schoolId!, client);
+      // Hisob o'quv yiliga bog'lanadi (invoices.academic_year_id), shuning uchun
+      // yil chegarasidan tashqaridagi oyga hisob chiqarish mantiqsiz: sentabrda
+      // boshlanadigan yilda avgust hisobini chiqarish shunday xatolikdan edi.
+      if (firstDay < String(year.starts_on).slice(0, 10) || firstDay > String(year.ends_on).slice(0, 10)) {
+        throw badRequest(
+          `${periodMonth} "${year.name}" o'quv yiliga kirmaydi ` +
+          `(${String(year.starts_on).slice(0, 10)} — ${String(year.ends_on).slice(0, 10)})`,
+        );
+      }
       const settings = await getSchoolSettings(req.schoolId!, client);
       // To'lov muddati kuni — sozlamadan (3-qoida), kodda hardcode yo'q.
       const dueDay = Number(settings.payment_due_day ?? 10);
@@ -149,6 +158,9 @@ const createPaymentSchema = z.object({
   // Kassir qaysi oylar uchun pul olayotganini belgilashi mumkin.
   // Bo'sh bo'lsa eng eski qarzdan boshlab avtomatik taqsimlanadi.
   invoiceIds: z.array(z.string().uuid()).max(24).optional(),
+  // Hisobi hali chiqarilmagan oylar uchun — oldindan to'lov. Hisob shu yerda
+  // yaratiladi, keyin to'lov unga yoziladi.
+  periodMonths: z.array(monthStr).max(24).optional(),
   idempotencyKey: z.string().min(1).optional(),
   externalId: z.string().optional(),
   paidAt: z.string().datetime({ message: 'paidAt ISO formatida (2026-09-05T10:00:00Z)' }).optional(),
@@ -245,6 +257,56 @@ async function refreshInvoiceStatuses(client: pg.PoolClient, schoolId: string, s
       WHERE i.id = a.id AND i.status <> 'void'`,
     [studentId, schoolId],
   );
+}
+
+/**
+ * Berilgan oy uchun hisobni topadi, bo'lmasa yaratadi.
+ *
+ * Ota-ona oldindan to'lashi mumkin: noyabrda hisob hali chiqarilmagan bo'lsa
+ * ham, avgustda kelib "noyabr uchun" to'lashi normal holat. Shuning uchun
+ * hisob to'lov paytida yaratiladi — butun yilga oldindan hisob chiqarib
+ * qo'yish esa hammani birdaniga qarzdor qilib ko'rsatardi.
+ */
+async function ensureInvoice(
+  client: pg.PoolClient,
+  schoolId: string,
+  studentId: string,
+  periodMonth: string,
+): Promise<string> {
+  const firstDay = `${periodMonth}-01`;
+  const existing = await client.query<{ id: string }>(
+    `SELECT id FROM invoices WHERE student_id = $1 AND period_month = $2::date AND school_id = $3`,
+    [studentId, firstDay, schoolId],
+  );
+  if (existing.rows[0]) return existing.rows[0].id;
+
+  const year = await getCurrentYear(schoolId, client);
+  if (firstDay < String(year.starts_on).slice(0, 10) || firstDay > String(year.ends_on).slice(0, 10)) {
+    throw badRequest(`${periodMonth} "${year.name}" o'quv yiliga kirmaydi`);
+  }
+
+  const settings = await getSchoolSettings(schoolId, client);
+  const dueDay = Number(settings.payment_due_day ?? 10);
+  const dueDate = `${periodMonth}-${String(dueDay).padStart(2, '0')}`;
+
+  // Summa generate bilan bir xil manbadan: biriktirish narxi, bo'lmasa sinf narxi.
+  const { rows } = await client.query<{ id: string }>(
+    `INSERT INTO invoices
+       (school_id, academic_year_id, student_id, enrollment_id, period_month, amount, discount, due_date)
+     SELECT e.school_id, e.academic_year_id, e.student_id, e.id, $3::date,
+            COALESCE(e.monthly_fee, c.monthly_fee),
+            round(COALESCE(e.monthly_fee, c.monthly_fee) * e.discount_percent / 100, 2),
+            $4::date
+       FROM enrollments e
+       JOIN classes c ON c.id = e.class_id
+      WHERE e.school_id = $1 AND e.student_id = $2 AND e.ends_on IS NULL
+     RETURNING id`,
+    [schoolId, studentId, firstDay, dueDate],
+  );
+  if (!rows[0]) {
+    throw badRequest("O'quvchi sinfga biriktirilmagan — oy uchun hisob chiqarib bo'lmaydi");
+  }
+  return rows[0].id;
 }
 
 /**
@@ -351,8 +413,15 @@ paymentsRoutes.post(
       await client.query(`UPDATE payments SET receipt_no = $2 WHERE id = $1`, [payment.id, receiptNo]);
       payment.receipt_no = receiptNo;
 
-      const allocations = input.invoiceIds?.length
-        ? await allocateToInvoices(client, req.schoolId!, input.studentId, payment.id, input.amount, input.invoiceIds)
+      // Kassir oylarni tanlagan bo'lsa — o'sha oylarga. Hisobi hali yo'q oylar
+      // shu yerda yaratiladi (oldindan to'lov).
+      const targetIds = [...(input.invoiceIds ?? [])];
+      for (const m of input.periodMonths ?? []) {
+        targetIds.push(await ensureInvoice(client, req.schoolId!, input.studentId, m));
+      }
+
+      const allocations = targetIds.length
+        ? await allocateToInvoices(client, req.schoolId!, input.studentId, payment.id, input.amount, targetIds)
         : await allocateStudentPayments(client, req.schoolId!, input.studentId);
 
       await audit(
@@ -412,5 +481,60 @@ paymentsRoutes.get(
     );
 
     res.json({ items: rows.map(({ total: _t, ...r }) => r), total: rows[0]?.total ?? 0, page: query.page });
+  }),
+);
+
+/**
+ * O'quvchining o'quv yili bo'yicha to'lov jadvali: yilning HAR BIR oyi,
+ * hisobi chiqarilgani ham, chiqarilmagani ham.
+ *
+ * Nega kerak: to'lov formasi faqat mavjud hisoblarni ko'rsatsa, ota-ona
+ * oldindan to'lay olmasdi — hisobi yo'q oy ro'yxatda umuman bo'lmasdi.
+ */
+invoicesRoutes.get(
+  '/schedule',
+  ah(async (req, res) => {
+    const { studentId } = parse(
+      z.object({ studentId: z.string().uuid("studentId formati noto'g'ri") }),
+      req.query,
+    );
+
+    const year = await getCurrentYear(req.schoolId!);
+    const { rows } = await pool.query(
+      `WITH months AS (
+         SELECT generate_series(
+                  date_trunc('month', $3::date),
+                  date_trunc('month', $4::date),
+                  interval '1 month'
+                )::date AS period_month
+       ),
+       -- Hisobi yo'q oy uchun kutilayotgan summa: biriktirish narxi,
+       -- bo'lmasa sinf narxi; chegirma ham shu yerdan.
+       expected AS (
+         SELECT COALESCE(e.monthly_fee, c.monthly_fee) AS amount,
+                round(COALESCE(e.monthly_fee, c.monthly_fee) * e.discount_percent / 100, 2) AS discount
+           FROM enrollments e
+           JOIN classes c ON c.id = e.class_id
+          WHERE e.school_id = $1 AND e.student_id = $2 AND e.ends_on IS NULL
+          LIMIT 1
+       )
+       SELECT to_char(m.period_month, 'YYYY-MM') AS period_month,
+              i.id,
+              i.status,
+              COALESCE(i.amount,   (SELECT amount   FROM expected), 0) AS amount,
+              COALESCE(i.discount, (SELECT discount FROM expected), 0) AS discount,
+              COALESCE(i.amount - i.discount - COALESCE((
+                SELECT SUM(pa.amount) FROM payment_allocations pa WHERE pa.invoice_id = i.id
+              ), 0),
+              (SELECT amount - discount FROM expected), 0) AS outstanding
+         FROM months m
+         LEFT JOIN invoices i
+           ON i.student_id = $2 AND i.school_id = $1
+          AND i.period_month = m.period_month AND i.status <> 'void'
+        ORDER BY m.period_month`,
+      [req.schoolId, studentId, year.starts_on, year.ends_on],
+    );
+
+    res.json({ year: { name: year.name, startsOn: year.starts_on, endsOn: year.ends_on }, items: rows });
   }),
 );

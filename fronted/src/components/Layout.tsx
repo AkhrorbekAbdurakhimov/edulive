@@ -11,7 +11,9 @@ const SCHOOL_NAV: NavItem[] = [
   { to: '/dashboard', label: 'Boshqaruv', icon: '▦' },
   { to: '/classes', label: 'Sinflar', icon: '▤' },
   { to: '/students', label: "O'quvchilar", icon: '👥' },
-  { to: '/attendance', label: 'Davomat', icon: '✓' },
+  // VAQTINCHALIK O'CHIRILGAN — davomat web'da vaqtincha ko'rsatilmaydi.
+  // Backend va o'qituvchi mobil ilovasi ishlashda davom etadi.
+  // { to: '/attendance', label: 'Davomat', icon: '✓' },
   { to: '/payments', label: "To'lovlar", icon: '₮' },
   { to: '/debtors', label: 'Qarzdorlar', icon: '!' },
   { to: '/users', label: 'Xodimlar', icon: '🧑' },
@@ -111,12 +113,11 @@ export function Layout({ children }: { children: ReactNode }) {
   const isSuper = user?.role === 'superadmin';
   const isTeacher = user?.role === 'teacher';
 
-  // O'qituvchi web'da faqat davomatni ko'radi.
-  // Superadmin maktab tanlamaguncha maktab ichidagi bo'limlarni ko'rmaydi:
+  // O'qituvchining web'dagi yagona bo'limi davomat edi; u vaqtincha yopilgani
+  // uchun unga maktab bo'limlari ko'rsatilmaydi — ishini mobil ilovada qiladi.
+  // Superadmin esa maktab tanlamaguncha maktab bo'limlarini ko'rmaydi:
   // ular X-School-Id siz baribir "Maktab tanlanmagan" xatosini beradi.
-  const schoolNav = isTeacher
-    ? SCHOOL_NAV.filter((n) => n.to === '/attendance')
-    : SCHOOL_NAV;
+  const schoolNav = isTeacher ? [] : SCHOOL_NAV;
   const mainNav: NavItem[] = isSuper
     ? [SCHOOLS_NAV, ...(schoolId ? schoolNav : [])]
     : schoolNav;

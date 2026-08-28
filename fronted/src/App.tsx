@@ -10,7 +10,7 @@ import Users from './pages/Users';
 import Classes from './pages/Classes';
 import Students from './pages/Students';
 import StudentCard from './pages/StudentCard';
-import Attendance from './pages/Attendance';
+// VAQTINCHALIK O'CHIRILGAN: import Attendance from './pages/Attendance';
 import Payments from './pages/Payments';
 import Debtors from './pages/Debtors';
 
@@ -33,7 +33,9 @@ export default function App() {
                 <Route path="/classes" element={<NeedsSchool><Classes /></NeedsSchool>} />
                 <Route path="/students" element={<NeedsSchool><Students /></NeedsSchool>} />
                 <Route path="/students/:id" element={<NeedsSchool><StudentCard /></NeedsSchool>} />
-                <Route path="/attendance" element={<NeedsSchool><Attendance /></NeedsSchool>} />
+                {/* VAQTINCHALIK O'CHIRILGAN — davomat web'da vaqtincha yopilgan.
+                    Backend endpointlari va mobil ilova tegilmagan. */}
+                {/* <Route path="/attendance" element={<NeedsSchool><Attendance /></NeedsSchool>} /> */}
                 <Route path="/payments" element={<NeedsSchool><Payments /></NeedsSchool>} />
                 <Route path="/debtors" element={<NeedsSchool><Debtors /></NeedsSchool>} />
                 <Route path="/users" element={<NeedsSchool><StaffOnly><Users /></StaffOnly></NeedsSchool>} />
@@ -75,7 +77,8 @@ function NeedsSchool({ children }: { children: React.ReactNode }) {
 /** Xodimlar ro'yxati o'qituvchiga yopiq — backend ham unga 403 beradi. */
 function StaffOnly({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  if (user?.role === 'teacher') return <Navigate to="/attendance" replace />;
+  // Davomat yopiq — o'qituvchi web'da faqat sozlamalarini ochadi.
+  if (user?.role === 'teacher') return <Navigate to="/settings" replace />;
   return <>{children}</>;
 }
 

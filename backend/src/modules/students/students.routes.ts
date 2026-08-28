@@ -271,7 +271,46 @@ studentsRoutes.patch(
           FOR UPDATE`,
         [id, req.schoolId],
       );
-      if (!before[0]) throw notFound("Faol biriktirish topilmadi — o'quvchi sinfga qo'shilmagan");
+      // Sinfsiz o'quvchini sinfga qo'shish ham shu yerdan bo'ladi. Aks holda
+      // yakka yaratilgan yoki Excel'dan sinfsiz kelgan o'quvchi hech qachon
+      // sinfga biriktirilmasdi — endpoint faqat mavjud yozuvni yangilardi.
+      if (!before[0]) {
+        if (!input.classId) {
+          throw notFound("O'quvchi sinfga qo'shilmagan — avval sinfni tanlang");
+        }
+        const student = await client.query(
+          `SELECT 1 FROM students WHERE id = $1 AND school_id = $2`,
+          [id, req.schoolId],
+        );
+        if (!student.rowCount) throw notFound("O'quvchi topilmadi");
+
+        const cls = await client.query(
+          `SELECT 1 FROM classes WHERE id = $1 AND school_id = $2`,
+          [input.classId, req.schoolId],
+        );
+        if (!cls.rowCount) throw notFound('Sinf topilmadi');
+
+        const year = await getCurrentYear(req.schoolId!, client);
+        const { rows: created } = await client.query(
+          `INSERT INTO enrollments
+             (school_id, student_id, class_id, academic_year_id, monthly_fee, discount_percent, discount_reason)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)
+           RETURNING *`,
+          [
+            req.schoolId, id, input.classId, year.id,
+            input.monthlyFee ?? null,
+            input.discountPercent ?? 0,
+            input.discountReason ?? null,
+          ],
+        );
+        await audit(req, {
+          action: 'enrollment.create',
+          entity: 'enrollment',
+          entityId: created[0].id,
+          after: { class_id: input.classId, discount_percent: input.discountPercent ?? 0 },
+        }, client);
+        return created[0];
+      }
 
       if (input.classId) {
         const cls = await client.query(`SELECT 1 FROM classes WHERE id = $1 AND school_id = $2`, [

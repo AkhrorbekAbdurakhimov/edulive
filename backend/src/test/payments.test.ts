@@ -240,8 +240,8 @@ test("mavjud hisob va bog'lanmagan to'lov: hisob chiqarish tugmasi o'zi tuzatadi
 
 test("kassir tanlagan oy yopiladi, eng eskisi tegilmaydi", async () => {
   const student = await createTestStudent(school, 'Oylik', 'Tanlov');
-  await api('POST', '/invoices/generate', { periodMonth: '2027-09' }, school.adminToken);
-  await api('POST', '/invoices/generate', { periodMonth: '2027-10' }, school.adminToken);
+  await api('POST', '/invoices/generate', { periodMonth: '2026-11' }, school.adminToken);
+  await api('POST', '/invoices/generate', { periodMonth: '2026-12' }, school.adminToken);
 
   const list = await api('GET', `/invoices?studentId=${student.studentId}`, undefined, school.adminToken);
   const months = list.body.items
@@ -267,7 +267,7 @@ test("kassir tanlagan oy yopiladi, eng eskisi tegilmaydi", async () => {
 test("begona oy tanlansa 400 qaytadi", async () => {
   const a = await createTestStudent(school, 'Bir', 'Talaba');
   const b = await createTestStudent(school, 'Ikki', 'Talaba');
-  await api('POST', '/invoices/generate', { periodMonth: '2027-11' }, school.adminToken);
+  await api('POST', '/invoices/generate', { periodMonth: '2027-01' }, school.adminToken);
 
   const bInv = await api('GET', `/invoices?studentId=${b.studentId}`, undefined, school.adminToken);
   const foreign = bInv.body.items[0].id;
@@ -276,4 +276,56 @@ test("begona oy tanlansa 400 qaytadi", async () => {
     studentId: a.studentId, amount: 100000, provider: 'cash', invoiceIds: [foreign],
   }, school.adminToken);
   assert.equal(res.status, 400, "boshqa o'quvchining oyiga yozib bo'lmaydi");
+});
+
+test('to\'lov jadvali: o\'quv yilining hamma oyi ko\'rinadi, hisobsizi ham', async () => {
+  const student = await createTestStudent(school, 'Jadval', 'Sinov');
+  const { status, body } = await api(
+    'GET', `/invoices/schedule?studentId=${student.studentId}`, undefined, school.adminToken,
+  );
+  assert.equal(status, 200);
+
+  // Sentabrdan mayga — 9 oy
+  assert.equal(body.items.length, 9, `oylar soni: ${body.items.map((i: any) => i.period_month).join(', ')}`);
+  assert.equal(body.items[0].period_month, '2026-09');
+  assert.equal(body.items[8].period_month, '2027-05');
+
+  // Hisobi yo'q oy ham kutilayotgan summa bilan keladi
+  const may = body.items[8];
+  assert.equal(may.id, null, 'may uchun hisob chiqarilmagan');
+  assert.ok(may.outstanding > 0, 'kutilayotgan summa ko\'rsatilishi kerak');
+});
+
+test('oldindan to\'lov: hisobi yo\'q oy uchun to\'lansa hisob yaratiladi', async () => {
+  const student = await createTestStudent(school, 'Oldindan', 'Tolov');
+  const sched = await api(
+    'GET', `/invoices/schedule?studentId=${student.studentId}`, undefined, school.adminToken,
+  );
+  const april = sched.body.items.find((i: any) => i.period_month === '2027-04');
+  assert.equal(april.id, null, 'aprel hisobi hali yo\'q');
+
+  const pay = await api('POST', '/payments', {
+    studentId: student.studentId, amount: april.outstanding, provider: 'cash',
+    periodMonths: ['2027-04'],
+  }, school.adminToken);
+  assert.equal(pay.status, 201, JSON.stringify(pay.body));
+  assert.equal(pay.body.allocations.length, 1, 'yaratilgan hisobga yozilishi kerak');
+
+  const after = await api(
+    'GET', `/invoices/schedule?studentId=${student.studentId}`, undefined, school.adminToken,
+  );
+  const aprilAfter = after.body.items.find((i: any) => i.period_month === '2027-04');
+  assert.ok(aprilAfter.id, 'hisob yaratilgan bo\'lishi kerak');
+  assert.equal(aprilAfter.status, 'paid');
+  assert.equal(Number(aprilAfter.outstanding), 0);
+
+  // Eski oylar tegilmagan — pul aynan tanlangan oyga ketdi
+  const sep = after.body.items.find((i: any) => i.period_month === '2026-09');
+  assert.notEqual(sep.status, 'paid');
+});
+
+test('o\'quv yilidan tashqaridagi oyga hisob chiqarilmaydi', async () => {
+  const res = await api('POST', '/invoices/generate', { periodMonth: '2026-08' }, school.adminToken);
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /o'quv yiliga kirmaydi/);
 });

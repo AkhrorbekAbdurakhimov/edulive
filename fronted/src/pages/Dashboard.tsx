@@ -27,13 +27,16 @@ export default function Dashboard() {
 
       {q.isPending ? (
         <div className="stat-grid">
-          <TileSkeleton /><TileSkeleton /><TileSkeleton /><TileSkeleton />
+          <TileSkeleton /><TileSkeleton /><TileSkeleton />
         </div>
       ) : q.isError ? (
         <div className="card"><ErrorState error={q.error} onRetry={() => q.refetch()} /></div>
       ) : (
         <>
           <div className="stat-grid">
+            {/* VAQTINCHALIK O'CHIRILGAN — davomat bo'limi web'da yopilgan,
+                shuning uchun unga olib boradigan ko'rsatkichlar ham ko'rsatilmaydi.
+                Backend /dashboard ni o'zgartirmadik: ma'lumot kelaveradi.
             <Link to="/attendance" className="card stat-tile">
               <div className="label">Bugungi davomat</div>
               <div className="value num">
@@ -51,6 +54,13 @@ export default function Dashboard() {
               <div className="value num">{q.data.attendanceToday.absent}</div>
               <div className="sub">kech qolganlar: {q.data.attendanceToday.late}</div>
             </Link>
+            */}
+
+            <Link to="/students" className="card stat-tile">
+              <div className="label">Faol o'quvchilar</div>
+              <div className="value num">{q.data.students.active}</div>
+              <div className="sub">ro'yxatdagi o'quvchilar</div>
+            </Link>
 
             <Link to="/payments" className="card stat-tile">
               <div className="label">Shu oy tushumi</div>
@@ -66,6 +76,7 @@ export default function Dashboard() {
             </Link>
           </div>
 
+          {/* VAQTINCHALIK O'CHIRILGAN — davomat yig'indisi bilan birga.
           <div className="card card-pad">
             <h2>Bugun</h2>
             <p className="muted">
@@ -75,6 +86,7 @@ export default function Dashboard() {
               {' '}Kech qoldi: <strong className="num">{q.data.attendanceToday.late}</strong>
             </p>
           </div>
+          */}
         </>
       )}
     </div>
