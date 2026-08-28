@@ -13,6 +13,7 @@ import StudentCard from './pages/StudentCard';
 // VAQTINCHALIK O'CHIRILGAN: import Attendance from './pages/Attendance';
 import Payments from './pages/Payments';
 import Debtors from './pages/Debtors';
+import Notifications from './pages/Notifications';
 
 /** Marshrutlar development/DESIGN_PROMPT.md dagi ekranlarga mos keladi. */
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
                 {/* <Route path="/attendance" element={<NeedsSchool><Attendance /></NeedsSchool>} /> */}
                 <Route path="/payments" element={<NeedsSchool><Payments /></NeedsSchool>} />
                 <Route path="/debtors" element={<NeedsSchool><Debtors /></NeedsSchool>} />
+                <Route path="/notifications" element={<NeedsSchool><StaffOnly><Notifications /></StaffOnly></NeedsSchool>} />
                 <Route path="/users" element={<NeedsSchool><StaffOnly><Users /></StaffOnly></NeedsSchool>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

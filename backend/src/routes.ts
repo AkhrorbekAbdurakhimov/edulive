@@ -14,6 +14,7 @@ import { telegramRoutes } from './modules/telegram/telegram.routes.js';
 import { attendanceRoutes } from './modules/attendance/attendance.routes.js';
 import { invoicesRoutes, paymentsRoutes } from './modules/payments/payments.routes.js';
 import { debtorsRoutes } from './modules/debtors/debtors.routes.js';
+import { notificationsRoutes } from './modules/notifications/notifications.routes.js';
 import { auditRoutes } from './modules/audit/audit.routes.js';
 import { dashboardRoutes } from './modules/dashboard/dashboard.routes.js';
 
@@ -53,6 +54,7 @@ api.use('/attendance', platformReadOnly, attendanceRoutes);
 api.use('/invoices', platformReadOnly, invoicesRoutes);
 api.use('/payments', platformReadOnly, paymentsRoutes);
 api.use('/debtors', platformReadOnly, debtorsRoutes);
+api.use('/notifications', platformReadOnly, notificationsRoutes);
 api.use('/audit', auditRoutes);
 api.use('/dashboard', dashboardRoutes);
 

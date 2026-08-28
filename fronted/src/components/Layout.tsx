@@ -16,6 +16,7 @@ const SCHOOL_NAV: NavItem[] = [
   // { to: '/attendance', label: 'Davomat', icon: '✓' },
   { to: '/payments', label: "To'lovlar", icon: '₮' },
   { to: '/debtors', label: 'Qarzdorlar', icon: '!' },
+  { to: '/notifications', label: 'Xabarlar', icon: '✉' },
   { to: '/users', label: 'Xodimlar', icon: '🧑' },
 ];
 const SCHOOLS_NAV: NavItem = { to: '/schools', label: 'Maktablar', icon: '🏫' };

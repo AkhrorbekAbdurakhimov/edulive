@@ -31,6 +31,9 @@ jobs:
       DATABASE_URL: postgres://edulive:edulive@localhost:5432/edulive_test
       JWT_SECRET: test_secret_at_least_32_characters_long
       TELEGRAM_WEBHOOK_SECRET: test_webhook_secret
+      # Bot tokenlari shu kalit bilan shifrlanadi; kalitsiz telegram testlari
+      # "SECRET_KEY sozlanmagan" deb yiqiladi. Testda ixtiyoriy 32 bayt.
+      SECRET_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

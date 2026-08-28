@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api, date, money } from '../lib/api';
 import { Chip, EmptyState, ErrorState, TableSkeleton } from '../components/ui';
@@ -20,6 +21,21 @@ function riskChip(oldestDue: string | null) {
 }
 
 export default function Debtors() {
+  // Qaysi o'quvchiga eslatma ketgani/xatosi — qatorning o'zida ko'rinadi.
+  const [note, setNote] = useState<Record<string, string>>({});
+
+  const remind = useMutation({
+    mutationFn: async (studentId: string) =>
+      (await api.post(`/debtors/${studentId}/remind`)).data as { queued: number },
+    onSuccess: (d, id) => setNote((n) => ({ ...n, [id]: `Yuborildi (${d.queued})` })),
+    onError: (e: unknown, id) =>
+      setNote((n) => ({
+        ...n,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        [id]: (e as any)?.response?.data?.error ?? 'Yuborilmadi',
+      })),
+  });
+
   const q = useQuery({
     queryKey: ['debtors'],
     queryFn: async () =>
@@ -74,11 +90,12 @@ export default function Debtors() {
                   <td data-label="">
                     <button
                       className="btn btn-secondary sm"
-                      title="Telegram bot ulangach ishlaydi (2-bosqich)"
-                      disabled
+                      onClick={() => remind.mutate(d.student_id)}
+                      disabled={remind.isPending && remind.variables === d.student_id}
                     >
                       Eslatma yuborish
                     </button>
+                    {note[d.student_id] && <div className="muted">{note[d.student_id]}</div>}
                   </td>
                 </tr>
               ))}

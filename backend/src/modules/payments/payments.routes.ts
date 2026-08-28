@@ -145,6 +145,11 @@ invoicesRoutes.get(
   }),
 );
 
+/** 1200000 -> "1 200 000 so'm". Xabar matnlari uchun. */
+function uz(n: number): string {
+  return `${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} so'm`;
+}
+
 // ================================================================ to'lovlar
 export const paymentsRoutes = Router();
 paymentsRoutes.use(requireTenant, requireRole('admin', 'manager'));
@@ -423,6 +428,37 @@ paymentsRoutes.post(
       const allocations = targetIds.length
         ? await allocateToInvoices(client, req.schoolId!, input.studentId, payment.id, input.amount, targetIds)
         : await allocateStudentPayments(client, req.schoolId!, input.studentId);
+
+      // Ota-onaga kvitansiya xabari — NAVBATGA qo'yiladi, shu yerda
+      // yuborilmaydi: kassir Telegram javobini kutib turmasligi kerak.
+      // Faqat botga ulangan va xabarni o'chirmagan ota-onalarga.
+      const { rows: fin } = await client.query<{ outstanding: number; name: string }>(
+        `SELECT COALESCE(SUM(i.amount - i.discount), 0)
+                - COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa
+                             JOIN invoices i2 ON i2.id = pa.invoice_id
+                            WHERE i2.student_id = $1), 0) AS outstanding,
+                (SELECT first_name FROM students WHERE id = $1) AS name
+           FROM invoices i
+          WHERE i.student_id = $1 AND i.school_id = $2 AND i.status <> 'void'`,
+        [input.studentId, req.schoolId],
+      );
+      const left = Number(fin[0]?.outstanding ?? 0);
+      const body =
+        `${fin[0]?.name ?? "O'quvchi"} uchun ${uz(input.amount)} to'lov qabul qilindi.\n` +
+        `Kvitansiya: ${payment.receipt_no}\n` +
+        (left > 0 ? `Qolgan qarz: ${uz(left)}` : 'Qarz qolmadi.');
+
+      await client.query(
+        `INSERT INTO notifications (school_id, parent_id, student_id, kind, payload, body)
+         SELECT $1, p.id, $2, 'payment.received',
+                jsonb_build_object('amount', $3::numeric, 'receipt', $4::text, 'outstanding', $5::numeric),
+                $6
+           FROM student_parents sp
+           JOIN parents p ON p.id = sp.parent_id
+          WHERE sp.student_id = $2 AND p.school_id = $1
+            AND p.notify_enabled AND p.telegram_chat_id IS NOT NULL`,
+        [req.schoolId, input.studentId, input.amount, payment.receipt_no, left, body],
+      );
 
       await audit(
         req,

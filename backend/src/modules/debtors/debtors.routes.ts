@@ -5,6 +5,20 @@ import { requireRole } from '../../middleware/auth.js';
 import { requireTenant } from '../../middleware/tenant.js';
 import { ah } from '../../utils/http.js';
 import { parse } from '../../utils/validate.js';
+import { badRequest } from '../../utils/errors.js';
+import { audit } from '../audit/audit.service.js';
+import { dispatchQueued } from '../notifications/notifications.service.js';
+
+/** 1200000 -> "1 200 000 so'm" — xabar matni uchun. */
+function uzSum(n: number): string {
+  return `${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} so'm`;
+}
+
+/** 2026-09-10 -> 10.09.2026 */
+function fmtDate(d: string): string {
+  const x = new Date(d);
+  return `${String(x.getDate()).padStart(2, '0')}.${String(x.getMonth() + 1).padStart(2, '0')}.${x.getFullYear()}`;
+}
 
 export const debtorsRoutes = Router();
 debtorsRoutes.use(requireTenant, requireRole('admin', 'manager'));
@@ -67,5 +81,73 @@ debtorsRoutes.get(
       totalOutstanding: rows[0]?.total_outstanding ?? 0,
       page: query.page,
     });
+  }),
+);
+
+// Qarz eslatmasi. Yuborish emas — NAVBATGA qo'yish: fon ishchisi jo'natadi.
+// Bir kunda bitta o'quvchi uchun bitta eslatma; tugma ikki marta bosilsa
+// ota-ona ikkita bir xil xabar olmasligi kerak.
+debtorsRoutes.post(
+  '/:studentId/remind',
+  ah(async (req, res) => {
+    const { rows } = await pool.query<{
+      student_name: string; outstanding: number; oldest_due: string | null;
+    }>(
+      `SELECT s.last_name || ' ' || s.first_name AS student_name,
+              SUM(i.amount - i.discount - COALESCE(pa.paid, 0)) AS outstanding,
+              MIN(i.due_date) FILTER (WHERE i.due_date < CURRENT_DATE) AS oldest_due
+         FROM invoices i
+         JOIN students s ON s.id = i.student_id AND s.school_id = i.school_id
+         LEFT JOIN LATERAL (
+           SELECT SUM(amount) AS paid FROM payment_allocations
+            WHERE invoice_id = i.id AND school_id = i.school_id
+         ) pa ON true
+        WHERE i.school_id = $1 AND i.student_id = $2 AND i.status IN ('open','partial')
+        GROUP BY s.last_name, s.first_name`,
+      [req.schoolId, req.params.studentId],
+    );
+
+    const debt = Number(rows[0]?.outstanding ?? 0);
+    if (!rows.length || debt <= 0) throw badRequest("Bu o'quvchida qarz yo'q");
+
+    const body =
+      `Hurmatli ota-ona!\n${rows[0].student_name} uchun to'lanmagan summa: ` +
+      `${uzSum(debt)}.\n` +
+      (rows[0].oldest_due ? `Eng eski hisob muddati: ${fmtDate(rows[0].oldest_due)}.\n` : '') +
+      `Iltimos, to'lovni amalga oshiring.`;
+
+    const { rowCount } = await pool.query(
+      `INSERT INTO notifications (school_id, parent_id, student_id, kind, payload, body)
+       SELECT $1, p.id, $2, 'debt.reminder',
+              jsonb_build_object('outstanding', $3::numeric), $4
+         FROM student_parents sp
+         JOIN parents p ON p.id = sp.parent_id
+        WHERE sp.student_id = $2 AND p.school_id = $1
+          AND p.notify_enabled AND p.telegram_chat_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM notifications n
+             WHERE n.parent_id = p.id AND n.student_id = $2
+               AND n.kind = 'debt.reminder'
+               AND n.created_at > now() - interval '1 day'
+          )`,
+      [req.schoolId, req.params.studentId, debt, body],
+    );
+
+    if (!rowCount) {
+      throw badRequest(
+        "Xabar yuborilmadi: ota-ona Telegram botga ulanmagan yoki bugun eslatma allaqachon yuborilgan",
+      );
+    }
+
+    await audit(req, {
+      action: 'debt.remind',
+      entity: 'student',
+      entityId: req.params.studentId,
+      after: { outstanding: debt, sent: rowCount },
+    });
+
+    // Foydalanuvchi natijani darhol ko'rishi kerak — 15 soniya kutmasin.
+    await dispatchQueued(10);
+    res.json({ queued: rowCount });
   }),
 );
