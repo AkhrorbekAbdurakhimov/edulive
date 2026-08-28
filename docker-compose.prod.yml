@@ -37,6 +37,9 @@ services:
       CORS_ORIGIN: https://${DOMAIN}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      # Maktablarning bot tokenlari shu kalit bilan shifrlanadi.
+      SECRET_KEY: ${SECRET_KEY:-}
+      PUBLIC_URL: ${PUBLIC_URL:-https://${DOMAIN}}
       UPLOAD_DIR: /app/uploads
       # Bitta bot barcha maktablar uchun — maktab /start <tg_code> orqali aniqlanadi.
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}

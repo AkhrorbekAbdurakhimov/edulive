@@ -11,6 +11,8 @@ export const env = {
   isProd: process.env.NODE_ENV === 'production',
   port: Number(process.env.PORT ?? 4000),
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+  // Webhook manzilini yasash uchun (Telegram bizga shu manzilga uradi).
+  publicUrl: process.env.PUBLIC_URL ?? '',
 
   databaseUrl: required('DATABASE_URL'),
 
@@ -18,6 +20,10 @@ export const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
 
   uploadDir: process.env.UPLOAD_DIR ?? './uploads',
+
+  // Bazadagi maxfiy qiymatlarni (Telegram bot tokenlari) shifrlash kaliti.
+  // openssl rand -hex 32. Bo'lmasa bot ulash endpointi ishlamaydi.
+  secretKey: process.env.SECRET_KEY ?? '',
 
   // Bitta bot barcha maktablar uchun; maktab /start <tg_code> orqali aniqlanadi.
   telegram: {

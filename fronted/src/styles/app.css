@@ -319,3 +319,9 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .import-errors .tbl th { position: static; }
 /* To'langan oy — tanlab bo'lmaydi, lekin yil ko'rinishi to'liq qolsin. */
 .month-pick.done { opacity: .65; cursor: default; }
+
+/* Maktab tahrirlash oynasidagi bot bo'limi — alohida amal ekani ko'rinib tursin. */
+.bot-box {
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);
+}
+.bot-box .actions { margin-top: 10px; }

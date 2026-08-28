@@ -5,6 +5,7 @@ import { api, date, money } from '../lib/api';
 import { useSchool } from '../lib/school';
 import { REGIONS, DISTRICTS } from '../lib/regions';
 import { EmptyState, ErrorState, Modal, TableSkeleton, TileSkeleton, initials, schoolStatusChip } from '../components/ui';
+import { SchoolBot } from '../components/SchoolBot';
 
 interface SchoolStats {
   currentYear: string | null;
@@ -439,6 +440,10 @@ function EditSchoolModal({ school, onClose }: { school: SchoolRow; onClose: () =
         <p className="muted" style={{ fontSize: 13 }}>
           Slug <strong>{school.slug}</strong> — o'zgarmaydi, unga havolalar bog'langan.
         </p>
+
+        {/* Bot biriktirish alohida amal: o'z endpointi bor va tokenni
+            "Saqlash" bilan birga yuborish shart emas. */}
+        <SchoolBot schoolId={school.id} />
         {errMsg && <p className="hint" style={{ marginTop: 10 }}>{errMsg}</p>}
         <div className="actions">
           <button type="button" className="btn btn-secondary" onClick={onClose}>Bekor qilish</button>

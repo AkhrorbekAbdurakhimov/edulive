@@ -18,6 +18,8 @@ interface ClassRow { id: string; name: string; student_count: number }
 export default function Students() {
   const [q, setQ] = useState('');
   const [classId, setClassId] = useState('');
+  const [gender, setGender] = useState('');
+  const [birthYear, setBirthYear] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const readOnly = useReadOnly();
@@ -28,12 +30,21 @@ export default function Students() {
     queryFn: async () => (await api.get<{ items: ClassRow[] }>('/classes')).data.items,
   });
 
+  // Filtr uchun aynan bazadagi yillar — taxminiy diapazon emas.
+  const years = useQuery({
+    queryKey: ['birth-years'],
+    queryFn: async () =>
+      (await api.get<{ items: Array<{ year: number; count: number }> }>('/students/birth-years')).data.items,
+  });
+
   const students = useQuery({
-    queryKey: ['students', q, classId],
+    queryKey: ['students', q, classId, gender, birthYear],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (q) params.set('q', q);
       if (classId) params.set('classId', classId);
+      if (gender) params.set('gender', gender);
+      if (birthYear) params.set('birthYear', birthYear);
       params.set('limit', '100');
       return (await api.get<{ items: StudentRow[]; total: number }>(`/students?${params}`)).data;
     },
@@ -62,6 +73,25 @@ export default function Students() {
           <option value="">Barcha sinflar</option>
           {classes.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+        <select className="input" value={gender} onChange={(e) => setGender(e.target.value)}>
+          <option value="">Jinsi: barchasi</option>
+          <option value="m">O'g'il bolalar</option>
+          <option value="f">Qizlar</option>
+        </select>
+        <select className="input" value={birthYear} onChange={(e) => setBirthYear(e.target.value)}>
+          <option value="">Tug'ilgan yil: barchasi</option>
+          {years.data?.map((y) => (
+            <option key={y.year} value={String(y.year)}>{y.year} ({y.count})</option>
+          ))}
+        </select>
+        {(q || classId || gender || birthYear) && (
+          <button
+            className="btn btn-ghost sm"
+            onClick={() => { setQ(''); setClassId(''); setGender(''); setBirthYear(''); }}
+          >
+            Tozalash
+          </button>
+        )}
       </div>
 
       <div className="card table-wrap">
@@ -72,7 +102,9 @@ export default function Students() {
         ) : students.data.items.length === 0 ? (
           <EmptyState
             title="O'quvchi topilmadi"
-            text={q || classId ? "Filtrni o'zgartirib ko'ring" : "Birinchi o'quvchini qo'shing"}
+            text={q || classId || gender || birthYear
+              ? "Filtrni o'zgartirib ko'ring"
+              : "Birinchi o'quvchini qo'shing"}
             action={readOnly ? undefined : <button className="btn btn-primary sm" onClick={() => setShowCreate(true)}>+ Yangi o'quvchi</button>}
           />
         ) : (
@@ -107,7 +139,8 @@ export default function Students() {
 function CreateStudentModal({ classes, onClose }: { classes: ClassRow[]; onClose: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
-    lastName: '', firstName: '', classId: '', parentName: '', parentPhone: '+998', relation: 'father',
+    lastName: '', firstName: '', middleName: '', birthDate: '', gender: '',
+    classId: '', parentName: '', parentPhone: '+998', relation: 'father',
   });
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -119,6 +152,11 @@ function CreateStudentModal({ classes, onClose }: { classes: ClassRow[]; onClose
         firstName: form.firstName.trim(),
         classId: form.classId || undefined,
       };
+      // Bo'sh qoldirilgan maydon umuman yuborilmaydi — backend ularni
+      // ixtiyoriy deb biladi, bo'sh satr esa validatsiyadan o'tmasdi.
+      if (form.middleName.trim()) body.middleName = form.middleName.trim();
+      if (form.birthDate) body.birthDate = form.birthDate;
+      if (form.gender) body.gender = form.gender;
       if (form.parentName.trim()) {
         body.parent = { fullName: form.parentName.trim(), phone: form.parentPhone.trim(), relation: form.relation };
       }
@@ -144,6 +182,22 @@ function CreateStudentModal({ classes, onClose }: { classes: ClassRow[]; onClose
           <div className="field">
             <label>Ism</label>
             <input className="input" value={form.firstName} onChange={set('firstName')} required minLength={2} />
+          </div>
+          <div className="field">
+            <label>Otasining ismi</label>
+            <input className="input" value={form.middleName} onChange={set('middleName')} />
+          </div>
+          <div className="field">
+            <label>Tug'ilgan sana</label>
+            <input className="input" type="date" value={form.birthDate} onChange={set('birthDate')} />
+          </div>
+          <div className="field">
+            <label>Jinsi</label>
+            <select className="input" value={form.gender} onChange={set('gender')}>
+              <option value="">Ko'rsatilmagan</option>
+              <option value="m">O'g'il</option>
+              <option value="f">Qiz</option>
+            </select>
           </div>
           <div className="field">
             <label>Sinf</label>

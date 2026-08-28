@@ -36,6 +36,10 @@ studentsRoutes.get(
         classId: z.string().uuid("classId formati noto'g'ri").optional(),
         status: z.enum(['active', 'archived', 'graduated', 'left']).default('active'),
         q: z.string().optional(),
+        gender: z.enum(['m', 'f']).optional(),
+        // Tug'ilgan YIL bo'yicha: sinf bir yoshdagi bolalardan tuziladi,
+        // shuning uchun aniq sana emas, yil kerak bo'ladi.
+        birthYear: z.coerce.number().int().min(1900).max(2100).optional(),
         page: z.coerce.number().int().min(1).default(1),
         limit: z.coerce.number().int().min(1).max(200).default(50),
       }),
@@ -62,12 +66,41 @@ studentsRoutes.get(
           AND ($3::uuid IS NULL OR e.class_id = $3)
           AND ($4::text IS NULL OR s.last_name || ' ' || s.first_name ILIKE '%' || $4 || '%'
                                 OR s.first_name || ' ' || s.last_name ILIKE '%' || $4 || '%')
+          AND ($5::text IS NULL OR s.gender = $5)
+          AND ($6::int  IS NULL OR EXTRACT(YEAR FROM s.birth_date) = $6)
         ORDER BY s.last_name, s.first_name
-        LIMIT $5 OFFSET $6`,
-      [req.schoolId, query.status, query.classId ?? null, query.q ?? null, query.limit, offset],
+        LIMIT $7 OFFSET $8`,
+      [
+        req.schoolId, query.status, query.classId ?? null, query.q ?? null,
+        query.gender ?? null, query.birthYear ?? null,
+        query.limit, offset,
+      ],
     );
 
     res.json({ items: rows.map(({ total: _t, ...r }) => r), total: rows[0]?.total ?? 0, page: query.page });
+  }),
+);
+
+/**
+ * Filtr uchun mavjud tug'ilgan yillar. Taxminiy diapazon (masalan 2005-2025)
+ * o'rniga aynan bazadagi yillar — bo'sh variantlar ko'rsatilmasin.
+ *
+ * DIQQAT: bu yo'l `/:id` dan OLDIN turishi shart, aks holda "birth-years"
+ * id sifatida talqin qilinadi.
+ */
+studentsRoutes.get(
+  '/birth-years',
+  requireRole('admin', 'manager'),
+  ah(async (req, res) => {
+    const { rows } = await pool.query<{ year: number; count: number }>(
+      `SELECT EXTRACT(YEAR FROM birth_date)::int AS year, count(*)::int AS count
+         FROM students
+        WHERE school_id = $1 AND birth_date IS NOT NULL AND status = 'active'
+        GROUP BY 1
+        ORDER BY 1 DESC`,
+      [req.schoolId],
+    );
+    res.json({ items: rows });
   }),
 );
 
