@@ -107,6 +107,23 @@ jobs:
       contents: read
       packages: read
     steps:
+      - uses: actions/checkout@v4
+
+      # Compose fayli image ichida emas, serverda yashaydi. Buni yubormasak
+      # repodagi o'zgarish (yangi muhit o'zgaruvchisi, xotira limiti) serverga
+      # hech qachon yetib bormaydi va sabab topish qiyin bo'ladi: bir marta
+      # SECRET_KEY shu tarzda konteynerga tushmay qolgan edi.
+      # .env serverda qoladi — maxfiy qiymatlar repoda saqlanmaydi.
+      - name: Compose faylini yuborish
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: docker-compose.prod.yml
+          target: /opt/edulive
+          overwrite: true
+
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1
         env:
