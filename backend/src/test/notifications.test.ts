@@ -164,3 +164,52 @@ test("qarzi yo'q o'quvchiga eslatma yuborilmaydi", async () => {
   assert.equal(res.status, 400);
   assert.match(res.body.error, /qarz yo'q/);
 });
+
+// ============================================================ botga taklif
+
+test("taklif havolasi platforma botiga ishora qiladi (maktabda o'z boti yo'q)", async () => {
+  const res = await api('GET', '/notifications/telegram', undefined, school.adminToken);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.ownBot, false);
+  assert.match(res.body.inviteLink, /^https:\/\/t\.me\/.+\?start=/, res.body.inviteLink);
+  assert.ok(res.body.inviteLink.endsWith(`${SLUG}-tg`), `tg_code havolada: ${res.body.inviteLink}`);
+});
+
+test("maktabning o'z boti bo'lsa havola o'sha botga ketadi", async () => {
+  await pool.query(
+    `UPDATE schools SET telegram_bot_token_enc = 'x', telegram_bot_username = 'afsona_test_bot'
+      WHERE id = $1`,
+    [school.schoolId],
+  );
+  const res = await api('GET', '/notifications/telegram', undefined, school.adminToken);
+  assert.equal(res.body.ownBot, true);
+  assert.match(res.body.inviteLink, /t\.me\/afsona_test_bot/, res.body.inviteLink);
+  await pool.query(
+    `UPDATE schools SET telegram_bot_token_enc = NULL, telegram_bot_username = NULL WHERE id = $1`,
+    [school.schoolId],
+  );
+});
+
+test('ulanmagan ota-onalar ro\'yxati va sanoq to\'g\'ri', async () => {
+  await pool.query(`UPDATE parents SET telegram_chat_id = NULL WHERE id = $1`, [parentId]);
+  const before = await api('GET', '/notifications/telegram', undefined, school.adminToken);
+  assert.equal(before.body.parents.connected, 0);
+  assert.ok(before.body.pending.some((p: { id: string }) => p.id === parentId), 'ulanmagan ro\'yxatda');
+  assert.ok(before.body.pending[0].phone, 'telefon raqami qaytadi — maktab qo\'ng\'iroq qiladi');
+
+  await pool.query(`UPDATE parents SET telegram_chat_id = 555 WHERE id = $1`, [parentId]);
+  const after2 = await api('GET', '/notifications/telegram', undefined, school.adminToken);
+  assert.equal(after2.body.parents.connected, 1);
+  assert.ok(!after2.body.pending.some((p: { id: string }) => p.id === parentId), 'ulangach ro\'yxatdan chiqadi');
+});
+
+test("boshqa maktabning ota-onasi ro'yxatga tushmaydi", async () => {
+  const other = await createTestSchool('test-notif-b');
+  try {
+    const res = await api('GET', '/notifications/telegram', undefined, other.adminToken);
+    assert.equal(res.body.parents.total, 0, 'faqat o\'z maktabi hisoblanadi');
+    assert.equal(res.body.pending.length, 0);
+  } finally {
+    await dropTestSchool('test-notif-b');
+  }
+});

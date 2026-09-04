@@ -60,6 +60,8 @@ export default function Notifications() {
         )}
       </div>
 
+      <InviteCard />
+
       <div className="row" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
         {(['all', 'sent', 'queued', 'failed'] as Status[]).map((s) => (
           <button
@@ -127,6 +129,131 @@ export default function Notifications() {
           </table>
         )}
       </div>
+    </div>
+  );
+}
+
+interface TgInfo {
+  bot: string | null;
+  ownBot: boolean;
+  inviteLink: string | null;
+  parents: { total: number; connected: number };
+  pending: Array<{ id: string; full_name: string; phone: string; students: string | null }>;
+}
+
+/**
+ * Ota-onalarni botga ulash.
+ *
+ * Xabar yuborish zanjirining eng oxirgi va eng ko'p uziladigan bo'g'ini shu:
+ * bot ulangan, kod ishlaydi, lekin ota-ona botni ochmagan bo'lsa xabar
+ * hech qayerga bormaydi. Shuning uchun havola ham, ulanmaganlar ro'yxati ham
+ * xabarlar sahifasining boshida turadi.
+ */
+function InviteCard() {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const q = useQuery({
+    queryKey: ['telegram-invite'],
+    queryFn: async () => (await api.get<TgInfo>('/notifications/telegram')).data,
+  });
+
+  if (q.isPending) return <div className="card card-pad"><div className="skeleton" style={{ width: '50%' }} /></div>;
+  if (q.isError) {
+    return (
+      <div className="card card-pad">
+        <ErrorState error={q.error} onRetry={() => q.refetch()} />
+      </div>
+    );
+  }
+
+  const d = q.data;
+
+  if (!d.bot) {
+    return (
+      <div className="card card-pad">
+        <h2 style={{ marginTop: 0 }}>Telegram bot ulanmagan</h2>
+        <p className="muted">
+          Maktabga bot ulanmaguncha ota-onalarga xabar yuborib bo'lmaydi.
+          Bot ulash platforma administratori orqali amalga oshiriladi.
+        </p>
+      </div>
+    );
+  }
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(d.inviteLink!);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard ruxsati bo'lmasa havola baribir ko'rinib turadi.
+      setCopied(false);
+    }
+  };
+
+  const left = d.parents.total - d.parents.connected;
+
+  return (
+    <div className="card card-pad" style={{ marginBottom: 16 }}>
+      <div className="row" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
+        <h2 style={{ margin: 0 }}>Ota-onalarni botga ulash</h2>
+        <Chip kind={left === 0 ? 'good' : 'warn'}>
+          {d.parents.connected} / {d.parents.total} ulangan
+        </Chip>
+      </div>
+
+      <p className="muted" style={{ marginTop: 0 }}>
+        Xabar faqat botga ulangan ota-onaga boradi. Quyidagi havolani ota-onalarga
+        yuboring: ular botni ochib, telefon raqamini tasdiqlaydi va raqam maktab
+        ro'yxatidagi raqamga mos kelsa avtomatik ulanadi.
+      </p>
+
+      <div className="row" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+        <code className="invite-link">{d.inviteLink}</code>
+        <button type="button" className="btn btn-secondary sm" onClick={copy}>
+          {copied ? '✓ Nusxa olindi' : 'Nusxa olish'}
+        </button>
+        <a className="btn btn-secondary sm" href={d.inviteLink!} target="_blank" rel="noreferrer">
+          Botni ochish
+        </a>
+      </div>
+
+      {!d.ownBot && (
+        <p className="help" style={{ marginTop: 8 }}>
+          Hozir umumiy platforma boti ishlatilyapti. Havoladagi kod maktabni
+          aniqlaydi — shuning uchun havolani o'zgartirmasdan yuboring.
+        </p>
+      )}
+
+      {left > 0 && (
+        <>
+          <button
+            type="button" className="btn btn-ghost sm" style={{ marginTop: 10 }}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? 'Yashirish' : `Ulanmagan ${left} ta ota-onani ko'rish`}
+          </button>
+          {open && (
+            <div className="table-wrap" style={{ marginTop: 8 }}>
+              <table className="tbl">
+                <thead><tr><th>Ota-ona</th><th>Telefon</th><th>Farzandi</th></tr></thead>
+                <tbody>
+                  {d.pending.map((p) => (
+                    <tr key={p.id}>
+                      <td data-label="Ota-ona">{p.full_name}</td>
+                      <td data-label="Telefon" className="num">{p.phone}</td>
+                      <td data-label="Farzandi">
+                        {p.students ?? <span className="muted">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

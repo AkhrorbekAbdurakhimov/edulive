@@ -14,7 +14,8 @@ interface CardData {
     class_id: string | null; class_name: string | null;
     monthly_fee: number | null; discount_percent: number | null; discount_reason: string | null;
   };
-  parents: Array<{ id: string; full_name: string; phone: string; relation: string | null; is_primary: boolean }>;
+  parents: Array<{ id: string; full_name: string; phone: string; relation: string | null;
+                   is_primary: boolean; telegram_linked: boolean }>;
   finance: { invoiced: number; paid: number; outstanding: number; advance: number };
 }
 interface InvoiceRow {
@@ -140,7 +141,12 @@ export default function StudentCard() {
               <span className="avatar">{initials(p.full_name)}</span>
               <div>
                 <strong>{p.full_name}</strong>{' '}
-                {p.is_primary && <span className="chip neutral">asosiy</span>}
+                {p.is_primary && <span className="chip neutral">asosiy</span>}{' '}
+                {/* Botga ulanmagan ota-onaga xabar bormaydi — buni shu yerda
+                    ko'rsatmasak, "nega xabar kelmadi?" degan savol javobsiz qoladi. */}
+                {p.telegram_linked
+                  ? <span className="chip good">✓ Telegram</span>
+                  : <span className="chip warn">◔ Botga ulanmagan</span>}
                 <div className="muted">{p.relation ? REL[p.relation] : ''} · <span className="num">{p.phone}</span></div>
               </div>
             </div>

@@ -5,6 +5,7 @@ import { requireRole } from '../../middleware/auth.js';
 import { requireTenant } from '../../middleware/tenant.js';
 import { ah } from '../../utils/http.js';
 import { notFound } from '../../utils/errors.js';
+import { env } from '../../config/env.js';
 import { parse } from '../../utils/validate.js';
 import { dispatchQueued } from './notifications.service.js';
 
@@ -71,5 +72,63 @@ notificationsRoutes.post(
     // shu yerda ko'rishi kerak.
     await dispatchQueued(10);
     res.json({ ok: true });
+  }),
+);
+
+/**
+ * Ota-onalarni botga taklif qilish uchun kerak bo'lgan hamma narsa.
+ *
+ * Bu maktabning o'z ishi (superadminniki emas): havolani ota-onalarga
+ * maktab tarqatadi. Kim ulanmagani ham shu yerda — busiz "nega xabar
+ * bormadi?" degan savolga javob topib bo'lmaydi.
+ */
+notificationsRoutes.get(
+  '/telegram',
+  ah(async (req, res) => {
+    const { rows } = await pool.query<{
+      tg_code: string | null; own_bot: string | null; has_token: boolean;
+    }>(
+      `SELECT tg_code, telegram_bot_username AS own_bot,
+              telegram_bot_token_enc IS NOT NULL AS has_token
+         FROM schools WHERE id = $1`,
+      [req.schoolId],
+    );
+    if (!rows[0]) throw notFound('Maktab topilmadi');
+
+    // Maktabning o'z boti bo'lmasa platforma botidan foydalaniladi; u holda
+    // qaysi maktab ekani havoladagi tg_code orqali aniqlanadi.
+    const bot = rows[0].has_token ? rows[0].own_bot : (env.telegram.username || null);
+    const inviteLink = bot
+      ? `https://t.me/${bot}${rows[0].tg_code ? `?start=${rows[0].tg_code}` : ''}`
+      : null;
+
+    const { rows: stat } = await pool.query<{ total: number; connected: number }>(
+      `SELECT count(*)::int AS total,
+              count(telegram_chat_id)::int AS connected
+         FROM parents WHERE school_id = $1`,
+      [req.schoolId],
+    );
+
+    // Ulanmaganlar — maktab qo'ng'iroq qilib aytishi uchun
+    const { rows: pending } = await pool.query(
+      `SELECT p.id, p.full_name, p.phone,
+              string_agg(s.last_name || ' ' || s.first_name, ', ' ORDER BY s.last_name) AS students
+         FROM parents p
+         LEFT JOIN student_parents sp ON sp.parent_id = p.id
+         LEFT JOIN students s ON s.id = sp.student_id AND s.status = 'active'
+        WHERE p.school_id = $1 AND p.telegram_chat_id IS NULL
+        GROUP BY p.id, p.full_name, p.phone
+        ORDER BY p.full_name
+        LIMIT 200`,
+      [req.schoolId],
+    );
+
+    res.json({
+      bot,
+      ownBot: rows[0].has_token,
+      inviteLink,
+      parents: stat[0],
+      pending,
+    });
   }),
 );

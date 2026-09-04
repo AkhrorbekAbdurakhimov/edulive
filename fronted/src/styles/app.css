@@ -341,3 +341,11 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .pick.on strong::after { content: ' ✓'; color: var(--brand-ink); }
 .pick .muted { font-size: 12px; }
 .pick-list p.muted { padding: 8px 10px; margin: 0; }
+
+/* Botga taklif havolasi — uzun, mobilda sindirib ko'rsatiladi. */
+.invite-link {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+  background: var(--surface-3); border: 1px solid var(--border);
+  border-radius: var(--r-control); padding: 6px 10px;
+  overflow-wrap: anywhere; max-width: 100%;
+}
