@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useReadOnly } from '../lib/auth';
+import { useCanLibrary, useReadOnly } from '../lib/auth';
 import { api, date, money } from '../lib/api';
 import { ErrorState, TableSkeleton, initials, invoiceChip } from '../components/ui';
 import { ArchiveModal, EditClassModal, EditInfoModal } from '../components/StudentEdit';
+import { StudentBooks } from './Library';
 
 interface CardData {
   student: {
@@ -26,6 +27,7 @@ const REL: Record<string, string> = { father: 'Otasi', mother: 'Onasi', guardian
 export default function StudentCard() {
   const { id } = useParams<{ id: string }>();
   const readOnly = useReadOnly();
+  const canLibrary = useCanLibrary();
   const navigate = useNavigate();
   const [editing, setEditing] = useState<null | 'info' | 'class' | 'archive'>(null);
 
@@ -145,6 +147,15 @@ export default function StudentCard() {
           ))
         )}
       </div>
+
+      {canLibrary && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="card-pad" style={{ paddingBottom: 0 }}><h2>Kutubxona</h2></div>
+          <div className="table-wrap">
+            <StudentBooks studentId={s.id} />
+          </div>
+        </div>
+      )}
 
       {!readOnly && s.status === 'active' && (
         <div className="row" style={{ marginTop: 16, justifyContent: 'flex-end' }}>

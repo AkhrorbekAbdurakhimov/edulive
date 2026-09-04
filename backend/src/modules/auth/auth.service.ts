@@ -13,6 +13,7 @@ export interface UserRow {
   phone: string | null;
   role: Role;
   is_active: boolean;
+  is_librarian: boolean;
   token_version: number;
 }
 
@@ -43,7 +44,7 @@ export async function verifyLogin(
   password: string,
 ): Promise<UserRow | 'inactive' | null> {
   const { rows } = await pool.query<UserRow & { password_hash: string }>(
-    `SELECT id, school_id, full_name, phone, role, is_active, token_version, password_hash
+    `SELECT id, school_id, full_name, phone, role, is_active, is_librarian, token_version, password_hash
        FROM users
       WHERE phone = $1
       ORDER BY school_id NULLS FIRST, created_at`,

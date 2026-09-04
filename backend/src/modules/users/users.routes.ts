@@ -23,7 +23,7 @@ usersRoutes.get(
   ah(async (req, res) => {
     const role = req.query.role ? parse(staffRole, req.query.role) : null;
     const { rows } = await pool.query(
-      `SELECT id, full_name, phone, email, role, is_active, last_login_at, created_at
+      `SELECT id, full_name, phone, email, role, is_active, is_librarian, last_login_at, created_at
          FROM users
         WHERE school_id = $1 AND ($2::text IS NULL OR role = $2)
         ORDER BY role, full_name`,
@@ -39,6 +39,8 @@ const createUserSchema = z.object({
   email: z.string().email("Email formati noto'g'ri").optional(),
   password: z.string().min(8, "Parol kamida 8 belgidan iborat bo'lishi kerak"),
   role: staffRole,
+  // Kutubxona huquqi roldan mustaqil: o'qituvchi ham kutubxonachi bo'la oladi.
+  isLibrarian: z.boolean().default(false),
 });
 
 usersRoutes.post(
@@ -54,17 +56,17 @@ usersRoutes.post(
     if (dup.rowCount) throw conflict("Bu telefon raqamli xodim allaqachon mavjud");
 
     const { rows } = await pool.query(
-      `INSERT INTO users (school_id, full_name, phone, email, password_hash, role)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       RETURNING id, full_name, phone, email, role, is_active, created_at`,
-      [req.schoolId, input.fullName, input.phone, input.email ?? null, await hashPassword(input.password), input.role],
+      `INSERT INTO users (school_id, full_name, phone, email, password_hash, role, is_librarian)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING id, full_name, phone, email, role, is_active, is_librarian, created_at`,
+      [req.schoolId, input.fullName, input.phone, input.email ?? null, await hashPassword(input.password), input.role, input.isLibrarian],
     );
 
     await audit(req, {
       action: 'user.create',
       entity: 'user',
       entityId: rows[0].id,
-      after: { fullName: input.fullName, phone: input.phone, role: input.role },
+      after: { fullName: input.fullName, phone: input.phone, role: input.role, isLibrarian: input.isLibrarian },
     });
     res.status(201).json({ user: rows[0] });
   }),
@@ -75,6 +77,7 @@ const patchUserSchema = z.object({
   phone: z.string().regex(/^\+998\d{9}$/, "Telefon raqam formati noto'g'ri").optional(),
   email: z.string().email().optional(),
   role: staffRole.optional(),
+  isLibrarian: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -91,7 +94,7 @@ usersRoutes.patch(
 
     const user = await tx(async (client) => {
       const { rows: before } = await client.query(
-        `SELECT id, full_name, phone, role, is_active FROM users
+        `SELECT id, full_name, phone, role, is_active, is_librarian FROM users
           WHERE id = $1 AND school_id = $2 AND role <> 'superadmin'`,
         [id, req.schoolId],
       );
@@ -103,10 +106,11 @@ usersRoutes.patch(
            phone     = COALESCE($4, phone),
            email     = COALESCE($5, email),
            role      = COALESCE($6, role),
-           is_active = COALESCE($7, is_active)
+           is_active = COALESCE($7, is_active),
+           is_librarian = COALESCE($8, is_librarian)
          WHERE id = $1 AND school_id = $2
-         RETURNING id, full_name, phone, email, role, is_active`,
-        [id, req.schoolId, input.fullName ?? null, input.phone ?? null, input.email ?? null, input.role ?? null, input.isActive ?? null],
+         RETURNING id, full_name, phone, email, role, is_active, is_librarian`,
+        [id, req.schoolId, input.fullName ?? null, input.phone ?? null, input.email ?? null, input.role ?? null, input.isActive ?? null, input.isLibrarian ?? null],
       );
 
       // Chiqarilgan xodimning barcha sessiyalari darhol bekor bo'ladi.

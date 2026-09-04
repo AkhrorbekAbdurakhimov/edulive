@@ -13,7 +13,7 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
     const payload = jwt.verify(header.slice(7), env.jwtSecret) as JwtPayload;
 
     const { rows } = await pool.query(
-      `SELECT id, school_id, role, full_name, token_version, is_active
+      `SELECT id, school_id, role, full_name, token_version, is_active, is_librarian
          FROM users WHERE id = $1`,
       [payload.sub],
     );
@@ -28,6 +28,7 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
       role: u.role as Role,
       fullName: u.full_name,
       tokenVersion: u.token_version,
+      isLibrarian: u.is_librarian,
     };
     next();
   } catch (err) {
@@ -53,6 +54,20 @@ export const platformReadOnly: RequestHandler = (req, _res, next) => {
   return next(
     forbidden("Platforma administratori maktab ma'lumotini o'zgartira olmaydi"),
   );
+};
+
+/**
+ * Kutubxonaga kirish: admin, menejer yoki kutubxonachi belgisi qo'yilgan xodim.
+ *
+ * requireRole bilan ifodalab bo'lmaydi, chunki huquq rolda emas — belgida:
+ * o'qituvchi ham kutubxonachi bo'lishi mumkin.
+ */
+export const requireLibrary: RequestHandler = (req, _res, next) => {
+  const u = req.user;
+  if (!u) return next(unauthorized());
+  if (u.role === 'superadmin' || u.role === 'admin' || u.role === 'manager') return next();
+  if (u.isLibrarian) return next();
+  return next(forbidden('Kutubxona huquqi berilmagan'));
 };
 
 export const requireRole =

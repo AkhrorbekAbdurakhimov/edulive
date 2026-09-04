@@ -36,8 +36,9 @@ const changePasswordSchema = z.object({
     .min(8, "Yangi parol kamida 8 belgidan iborat bo'lishi kerak"),
 });
 
-function publicUser(u: { id: string; school_id: string | null; full_name: string; phone: string | null; role: string }) {
-  return { id: u.id, schoolId: u.school_id, fullName: u.full_name, phone: u.phone, role: u.role };
+function publicUser(u: { id: string; school_id: string | null; full_name: string; phone: string | null; role: string; is_librarian?: boolean }) {
+  return { id: u.id, schoolId: u.school_id, fullName: u.full_name, phone: u.phone, role: u.role,
+           isLibrarian: !!u.is_librarian };
 }
 
 // ---------------------------------------------------------------- login
@@ -192,7 +193,7 @@ authRoutes.patch(
       const { rows } = await client.query(
         `UPDATE users SET full_name = $2, phone = $3
           WHERE id = $1
-          RETURNING id, school_id, full_name, phone, role`,
+          RETURNING id, school_id, full_name, phone, role, is_librarian`,
         [u.id, input.fullName, input.phone],
       );
       req.schoolId = u.schoolId ?? undefined;
@@ -214,7 +215,8 @@ authRoutes.get(
   ah(async (req, res) => {
     const u = req.user!;
     res.json({
-      user: { id: u.id, schoolId: u.schoolId, fullName: u.fullName, role: u.role },
+      user: { id: u.id, schoolId: u.schoolId, fullName: u.fullName, role: u.role,
+              isLibrarian: u.isLibrarian },
     });
   }),
 );

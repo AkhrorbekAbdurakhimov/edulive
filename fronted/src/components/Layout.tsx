@@ -17,9 +17,11 @@ const SCHOOL_NAV: NavItem[] = [
   { to: '/payments', label: "To'lovlar", icon: '₮' },
   { to: '/debtors', label: 'Qarzdorlar', icon: '!' },
   { to: '/notifications', label: 'Xabarlar', icon: '✉' },
+  { to: '/library', label: 'Kutubxona', icon: '📚' },
   { to: '/users', label: 'Xodimlar', icon: '🧑' },
 ];
 const SCHOOLS_NAV: NavItem = { to: '/schools', label: 'Maktablar', icon: '🏫' };
+const LIBRARY_NAV: NavItem = { to: '/library', label: 'Kutubxona', icon: '📚' };
 const SETTINGS_NAV: NavItem = { to: '/settings', label: 'Sozlamalar', icon: '⚙' };
 
 /** Pastki mobil panelga shuncha band sig'adi; qolgani "Yana" varaqasiga tushadi. */
@@ -116,9 +118,12 @@ export function Layout({ children }: { children: ReactNode }) {
 
   // O'qituvchining web'dagi yagona bo'limi davomat edi; u vaqtincha yopilgani
   // uchun unga maktab bo'limlari ko'rsatilmaydi — ishini mobil ilovada qiladi.
+  // Istisno: kutubxonachi belgisi qo'yilgan o'qituvchiga kutubxona ochiq.
   // Superadmin esa maktab tanlamaguncha maktab bo'limlarini ko'rmaydi:
   // ular X-School-Id siz baribir "Maktab tanlanmagan" xatosini beradi.
-  const schoolNav = isTeacher ? [] : SCHOOL_NAV;
+  const schoolNav = isTeacher
+    ? (user?.isLibrarian ? [LIBRARY_NAV] : [])
+    : SCHOOL_NAV;
   const mainNav: NavItem[] = isSuper
     ? [SCHOOLS_NAV, ...(schoolId ? schoolNav : [])]
     : schoolNav;

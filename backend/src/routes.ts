@@ -15,6 +15,8 @@ import { attendanceRoutes } from './modules/attendance/attendance.routes.js';
 import { invoicesRoutes, paymentsRoutes } from './modules/payments/payments.routes.js';
 import { debtorsRoutes } from './modules/debtors/debtors.routes.js';
 import { notificationsRoutes } from './modules/notifications/notifications.routes.js';
+import { libraryRoutes } from './modules/library/library.routes.js';
+import { libraryImportRoutes } from './modules/library/library.import.routes.js';
 import { auditRoutes } from './modules/audit/audit.routes.js';
 import { dashboardRoutes } from './modules/dashboard/dashboard.routes.js';
 
@@ -55,6 +57,9 @@ api.use('/invoices', platformReadOnly, invoicesRoutes);
 api.use('/payments', platformReadOnly, paymentsRoutes);
 api.use('/debtors', platformReadOnly, debtorsRoutes);
 api.use('/notifications', platformReadOnly, notificationsRoutes);
+// Import /library/books/:id dan OLDIN: aks holda "import" id deb talqin qilinardi.
+api.use('/library/books/import', platformReadOnly, libraryImportRoutes);
+api.use('/library', platformReadOnly, libraryRoutes);
 api.use('/audit', auditRoutes);
 api.use('/dashboard', dashboardRoutes);
 

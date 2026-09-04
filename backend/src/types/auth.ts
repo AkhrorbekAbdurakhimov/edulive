@@ -7,6 +7,8 @@ export interface AuthUser {
   role: Role;
   fullName: string;
   tokenVersion: number;
+  /** Kutubxonaga kirish huquqi — roldan mustaqil belgi. */
+  isLibrarian: boolean;
 }
 
 export interface JwtPayload {

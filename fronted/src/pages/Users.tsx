@@ -10,6 +10,7 @@ interface StaffRow {
   phone: string | null;
   email: string | null;
   role: 'admin' | 'manager' | 'teacher';
+  is_librarian: boolean;
   is_active: boolean;
   last_login_at: string | null;
   created_at: string;
@@ -90,7 +91,10 @@ export default function Users() {
                     </div>
                   </td>
                   <td data-label="Telefon" className="num">{s.phone ?? <span className="muted">—</span>}</td>
-                  <td data-label="Rol">{roleLabel(s.role)}</td>
+                  <td data-label="Rol">
+                    {roleLabel(s.role)}
+                    {s.is_librarian && <div className="muted">kutubxonachi</div>}
+                  </td>
                   <td data-label="Holat">
                     {s.is_active
                       ? <Chip kind="good">Faol</Chip>
@@ -126,6 +130,7 @@ function CreateStaffModal({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState({
     fullName: '', phone: '+998', email: '', password: '', role: 'teacher',
   });
+  const [isLibrarian, setIsLibrarian] = useState(false);
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -136,6 +141,7 @@ function CreateStaffModal({ onClose }: { onClose: () => void }) {
         phone: form.phone.trim(),
         password: form.password,
         role: form.role,
+        isLibrarian,
       };
       if (form.email.trim()) body.email = form.email.trim();
       return (await api.post('/users', body)).data;
@@ -178,6 +184,20 @@ function CreateStaffModal({ onClose }: { onClose: () => void }) {
             <span className="help">Kamida 8 belgi. Xodimga yetkazing — u Sozlamalar orqali o'zi o'zgartiradi.</span>
           </div>
         </div>
+
+        <label className="check-row">
+          <input
+            type="checkbox" checked={isLibrarian}
+            onChange={(e) => setIsLibrarian(e.target.checked)}
+          />
+          <span>
+            Kutubxonachi
+            <span className="help">
+              Kutubxona bo'limiga kirish huquqi. Rolga bog'liq emas.
+            </span>
+          </span>
+        </label>
+
         {errMsg && <p className="hint" style={{ marginTop: 10 }}>{errMsg}</p>}
         <div className="actions">
           <button type="button" className="btn btn-secondary" onClick={onClose}>Bekor qilish</button>
@@ -199,6 +219,7 @@ function EditStaffModal({ staff, onClose }: { staff: StaffRow; onClose: () => vo
     email: staff.email ?? '',
     role: staff.role as string,
     isActive: staff.is_active,
+    isLibrarian: staff.is_librarian,
   });
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -210,6 +231,7 @@ function EditStaffModal({ staff, onClose }: { staff: StaffRow; onClose: () => vo
         phone: form.phone.trim(),
         role: form.role,
         isActive: form.isActive,
+        isLibrarian: form.isLibrarian,
       };
       if (form.email.trim()) body.email = form.email.trim();
       return (await api.patch(`/users/${staff.id}`, body)).data;
@@ -248,6 +270,20 @@ function EditStaffModal({ staff, onClose }: { staff: StaffRow; onClose: () => vo
             <input className="input" type="email" value={form.email} onChange={set('email')} />
           </div>
         </div>
+
+        <label className="check-row">
+          <input
+            type="checkbox" checked={form.isLibrarian}
+            onChange={(e) => setForm((f) => ({ ...f, isLibrarian: e.target.checked }))}
+          />
+          <span>
+            Kutubxonachi
+            <span className="help">
+              Kutubxona bo'limiga kirish huquqi. Rolga bog'liq emas — o'qituvchi
+              bo'lib turib kutubxonachi ham bo'lishi mumkin.
+            </span>
+          </span>
+        </label>
 
         <label className="check-row">
           <input

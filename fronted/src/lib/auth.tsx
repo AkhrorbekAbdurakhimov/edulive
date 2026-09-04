@@ -8,6 +8,8 @@ export interface User {
   fullName: string;
   role: 'superadmin' | 'admin' | 'manager' | 'teacher';
   phone?: string | null;
+  /** Kutubxona huquqi — roldan mustaqil belgi. */
+  isLibrarian?: boolean;
 }
 
 interface AuthCtx {
@@ -94,4 +96,12 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
   return <>{children}</>;
+}
+
+/** Kutubxonaga kirish: admin/menejer, yoki kutubxonachi belgisi qo'yilgan xodim. */
+export function useCanLibrary(): boolean {
+  const { user } = useAuth();
+  if (!user) return false;
+  if (user.role === 'superadmin' || user.role === 'admin' || user.role === 'manager') return true;
+  return !!user.isLibrarian;
 }

@@ -325,3 +325,19 @@ table.tbl { width: 100%; border-collapse: collapse; }
   margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);
 }
 .bot-box .actions { margin-top: 10px; }
+
+/* Kutubxonada o'quvchi/kitob tanlash ro'yxati. Ochiladigan select emas:
+   qidirib topish kerak, ro'yxat uzun bo'lishi mumkin. */
+.pick-list { display: grid; gap: 4px; max-height: 190px; overflow-y: auto; margin-top: 8px; }
+.pick {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  text-align: left; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: var(--r-control); background: var(--surface); cursor: pointer;
+  font: inherit; color: var(--t1);
+}
+.pick:hover { background: var(--surface-2); }
+.pick.on { border-color: var(--brand); background: var(--brand-soft); }
+/* Tanlanganini rang bilan emas, belgi bilan ham bildiramiz. */
+.pick.on strong::after { content: ' ✓'; color: var(--brand-ink); }
+.pick .muted { font-size: 12px; }
+.pick-list p.muted { padding: 8px 10px; margin: 0; }

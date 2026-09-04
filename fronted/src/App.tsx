@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { RequireAuth, useAuth } from './lib/auth';
+import { RequireAuth, useAuth, useCanLibrary } from './lib/auth';
 import { useSchool } from './lib/school';
 import { Layout } from './components/Layout';
 import Login from './pages/Login';
@@ -14,6 +14,7 @@ import StudentCard from './pages/StudentCard';
 import Payments from './pages/Payments';
 import Debtors from './pages/Debtors';
 import Notifications from './pages/Notifications';
+import Library from './pages/Library';
 
 /** Marshrutlar development/DESIGN_PROMPT.md dagi ekranlarga mos keladi. */
 export default function App() {
@@ -40,6 +41,7 @@ export default function App() {
                 <Route path="/payments" element={<NeedsSchool><Payments /></NeedsSchool>} />
                 <Route path="/debtors" element={<NeedsSchool><Debtors /></NeedsSchool>} />
                 <Route path="/notifications" element={<NeedsSchool><StaffOnly><Notifications /></StaffOnly></NeedsSchool>} />
+                <Route path="/library" element={<NeedsSchool><LibraryOnly><Library /></LibraryOnly></NeedsSchool>} />
                 <Route path="/users" element={<NeedsSchool><StaffOnly><Users /></StaffOnly></NeedsSchool>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
@@ -73,6 +75,19 @@ function NeedsSchool({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const { schoolId } = useSchool();
   if (user?.role === 'superadmin' && !schoolId) return <Navigate to="/schools" replace />;
+  return <>{children}</>;
+}
+
+/**
+ * Kutubxona: admin/menejer, yoki kutubxonachi belgisi qo'yilgan xodim.
+ *
+ * Backend baribir 403 beradi, lekin qo'riqchisiz sahifa qobig'i ochilib,
+ * "+ Kitob berish" tugmalari ko'rinib turardi — ishlamaydigan tugma
+ * ko'rsatishdan ko'ra ochiq aytgan yaxshi.
+ */
+function LibraryOnly({ children }: { children: React.ReactNode }) {
+  const canLibrary = useCanLibrary();
+  if (!canLibrary) return <Navigate to="/settings" replace />;
   return <>{children}</>;
 }
 
