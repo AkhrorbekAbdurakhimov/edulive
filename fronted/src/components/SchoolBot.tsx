@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Chip } from './ui';
+import { Chip, ErrorState } from './ui';
 
 interface BotStatus {
   own: boolean;
@@ -48,6 +48,18 @@ export function SchoolBot({ schoolId }: { schoolId: string }) {
     (disconnect.error as any)?.response?.data?.error;
 
   if (status.isPending) return <div className="skeleton" style={{ width: '60%' }} />;
+
+  // Xato holati alohida bo'lishi SHART: busiz so'rov yiqilganda quyidagi
+  // `s?.canEncrypt` false chiqib, panel "SECRET_KEY sozlanmagan" deb
+  // yozardi — ya'ni tarmoq uzilishi server nosozligidek ko'rinardi.
+  if (status.isError) {
+    return (
+      <div className="bot-box">
+        <strong style={{ fontSize: 14 }}>Telegram bot</strong>
+        <ErrorState error={status.error} onRetry={() => status.refetch()} />
+      </div>
+    );
+  }
 
   const s = status.data;
 

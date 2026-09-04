@@ -8,10 +8,20 @@
 kassly.uz, www.kassly.uz {
 	encode gzip zstd
 	# `kassly-web` — kassly stack'ining `edge` tarmog'idagi taxallusi.
-	reverse_proxy kassly-web:80
+	# Deploy paytida konteyner qayta ishga tushadi — ulanishni uzish
+	# o'rniga bir necha soniya kutamiz.
+	reverse_proxy kassly-web:80 {
+		lb_try_duration 15s
+		lb_try_interval 250ms
+	}
 }
 
 edulive.uz, www.edulive.uz {
 	encode gzip zstd
-	reverse_proxy edulive-web:80
+	# Deploy paytida konteyner qayta ishga tushadi — ulanishni uzish
+	# o'rniga bir necha soniya kutamiz.
+	reverse_proxy edulive-web:80 {
+		lb_try_duration 15s
+		lb_try_interval 250ms
+	}
 }

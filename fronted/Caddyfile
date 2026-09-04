@@ -7,7 +7,13 @@
 	# API, fayllar va healthcheck backend konteynerida.
 	@backend path /api/* /uploads/* /health
 	handle @backend {
-		reverse_proxy backend:4000
+		# Deploy paytida backend konteyneri qayta ishga tushadi (~5-10 s).
+		# Bu bloksiz Caddy ulanishni darhol uzardi va brauzerda
+		# net::ERR_CONNECTION_RESET chiqardi. Endi kutib, keyin uzatadi.
+		reverse_proxy backend:4000 {
+			lb_try_duration 15s
+			lb_try_interval 250ms
+		}
 	}
 
 	# Qolgani — React SPA.

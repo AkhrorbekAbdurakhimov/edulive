@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 /* Status chip — rang HECH QACHON yolg'iz ma'no tashimaydi: ikonka + so'z birga. */
 type ChipKind = 'good' | 'warn' | 'serious' | 'crit' | 'neutral';
@@ -93,7 +93,10 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry: () => 
       <div className="icon" aria-hidden>⚠</div>
       <h3>Yuklab bo'lmadi</h3>
       <p>{String(msg)}</p>
-      <button className="btn btn-secondary sm" onClick={onRetry}>Qayta urinish</button>
+      {/* type="button" SHART: forma ichida turganda (masalan maktab tahrirlash
+          oynasidagi bot paneli) sukut bo'yicha submit bo'lib, formani
+          yuborib oynani yopib yuborardi. */}
+      <button type="button" className="btn btn-secondary sm" onClick={onRetry}>Qayta urinish</button>
     </div>
   );
 }
@@ -101,9 +104,17 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry: () => 
 export function Modal({
   title, children, onClose,
 }: { title: string; children: ReactNode; onClose: () => void }) {
+  // Escape bilan yopilishi kutiladigan xatti-harakat; busiz klaviatura bilan
+  // ishlayotgan foydalanuvchi oynadan chiqolmasdi.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-label={title}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
         <h2>{title}</h2>
         {children}
       </div>
