@@ -21,7 +21,8 @@
       "apiUrl": "http://10.0.2.2:4000/api"
     },
     "plugins": [
-      "expo-asset"
+      "expo-asset",
+      "expo-font"
     ]
   }
 }

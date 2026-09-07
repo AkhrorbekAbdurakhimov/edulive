@@ -31,6 +31,24 @@
 | 11 | Hujjat generatsiyasi | Qo'shildi | `pdfkit` — shartnoma, kvitansiya, ma'lumotnoma |
 | 12 | Multi-tenant / filial | Birinchi kundan | A1 ga qarang |
 
+## Android ilova (07.09.2026)
+
+Maket (`mobile-ui.dc.html`) backend'dan oldin chizilgan. Ilova yozilganda
+maket va mavjud API mantiqi to'qnashgan joylarda **mantiq ustun** qo'yildi:
+
+| # | Maketda | Ilovada | Sabab |
+|---|---|---|---|
+| M1 | Bosh ekranda "Bugungi darslar" (vaqt, dars raqami, fan) | "Bugungi sinflar" — sinf, o'quvchi soni, davomat holati | Dars jadvali va fanlar 2-bosqich; backend'da `lessons` bo'sh. Karta tuzilishi maketdagi bilan bir xil, dars vaqti o'rnida o'quvchi soni. |
+| M2 | KPI "Baho qo'yilmagan" | KPI "Bugun kelmadi" | Baho moduli yo'q. |
+| M3 | Pastki nav: Bugun · Sinflar · Baholar · Profil | Bugun · Sinflar · Profil | O'lik tugma qo'yilmaydi; baho tabi 2-bosqichda qo'shiladi. |
+| M4 | Tasdiqlash oynasida "3 ta ota-onaga xabar yuboriladi" | "N ta o'quvchining ota-onasiga" (N = kelmagan + kech) | Qaysi ota-onada Telegram ulangani tasdiqlashdan oldin ma'lum emas; aniq son natija ekranida (`notificationsQueued`). |
+| M5 | "2 soat 58 daqiqa ichida tahrirlash mumkin" | Bir xil, lekin muddat serverdan (`editableUntil`) | 3-qoida: sozlama kodda emas. `ATTENDANCE_EDIT_WINDOW_HOURS` o'zgarsa ilova yangilanmaydi. |
+| M6 | — | Kech qolganda uzoq bosish → daqiqa (5/10/15/20/30) | Bot xabari "N daqiqa kechikdi" deb yoziladi; daqiqasiz `NULL` ketadi, `0 daqiqa` emas. |
+| M7 | — | Server rad etgan navbat yozuvi sababi bilan ko'rinadi | Oldingi versiya jimgina o'chirardi — o'qituvchi davomat ketdi deb o'ylardi. |
+| M8 | — | Navbat bo'sh bo'lmasa chiqish bloklanadi | Token o'chsa navbat yuborilmaydi; keyingi kirgan o'qituvchi nomidan ketishi mumkin. |
+
+Maketning 5-ekrani (haftalik baho) 2-bosqichda `grades` moduli bilan birga qilinadi.
+
 ## Ochiq masalalar
 
 - **Kundalik.com API.** Ochiq hujjatlashtirilgan API topilmadi. Rasmiy yozishma

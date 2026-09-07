@@ -16,6 +16,10 @@ attendanceRoutes.use(requireTenant, requireRole('admin', 'manager', 'teacher'));
 
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Sana formati: YYYY-MM-DD');
 
+/** O'qituvchi tasdiqlangan davomatni qaysi vaqtgacha tahrirlay oladi (ISO). */
+const editableUntil = (confirmedAt: Date): string =>
+  new Date(confirmedAt.getTime() + env.attendanceEditWindowHours * 3_600_000).toISOString();
+
 // ---------------------------------------------------------------- olish
 // 5-QOIDA: sukut holati 'present'. API faqat kelmagan/kechikkanlar ro'yxatini
 // qabul qiladi — qolgan hamma avtomatik "keldi" bo'ladi.
@@ -172,7 +176,10 @@ attendanceRoutes.post(
 
       await assertClassAccess(req.user!, req.schoolId!, session.class_id);
 
-      await client.query(`UPDATE attendance_sessions SET confirmed_at = now() WHERE id = $1`, [sessionId]);
+      const { rows: stamped } = await client.query<{ confirmed_at: string }>(
+        `UPDATE attendance_sessions SET confirmed_at = now() WHERE id = $1 RETURNING confirmed_at`,
+        [sessionId],
+      );
 
       // Kelmagan/kechikkanlarning ota-onalariga bildirishnoma navbatga qo'yiladi.
       // Yagona engine (A4): kanal — parametr, yuborishni worker bajaradi.
@@ -205,7 +212,14 @@ attendanceRoutes.post(
         client,
       );
 
-      return { ok: true, notificationsQueued: queued.rowCount };
+      // Tahrir oynasi server sozlamasi — ilova uni hisoblamaydi, shu yerdan oladi.
+      const confirmedAt = new Date(stamped[0].confirmed_at);
+      return {
+        ok: true,
+        notificationsQueued: queued.rowCount,
+        confirmedAt: confirmedAt.toISOString(),
+        editableUntil: editableUntil(confirmedAt),
+      };
     });
 
     res.json(result);
@@ -242,7 +256,11 @@ attendanceRoutes.get(
       [session.rows[0].id, req.schoolId],
     );
 
-    res.json({ session: session.rows[0], items: items.rows });
+    const s = session.rows[0];
+    res.json({
+      session: { ...s, editableUntil: s.confirmed_at ? editableUntil(new Date(s.confirmed_at)) : null },
+      items: items.rows,
+    });
   }),
 );
 
