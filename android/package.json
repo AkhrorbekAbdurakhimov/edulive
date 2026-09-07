@@ -7,7 +7,8 @@
     "start": "expo start",
     "android": "expo run:android",
     "build:apk": "eas build -p android --profile preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.1.0",
@@ -16,6 +17,7 @@
     "axios": "^1.7.0",
     "expo": "~52.0.0",
     "expo-asset": "~11.0.5",
+    "expo-build-properties": "~0.13.3",
     "expo-constants": "~17.0.8",
     "expo-font": "~13.0.4",
     "expo-secure-store": "~14.0.0",
