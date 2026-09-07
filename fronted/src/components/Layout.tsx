@@ -27,6 +27,16 @@ const SETTINGS_NAV: NavItem = { to: '/settings', label: 'Sozlamalar', icon: '⚙
 /** Pastki mobil panelga shuncha band sig'adi; qolgani "Yana" varaqasiga tushadi. */
 const MOBILE_SLOTS = 4;
 
+/**
+ * Telefonda pastki panelga tushadigan bo'limlar — SHU tartibda.
+ *
+ * Yon menyuning tartibi bilan bir xil emas: kompyuterda bo'limlar mantiqiy
+ * ketma-ketlikda turadi, telefonda esa eng ko'p ochiladiganlari bosh barmoq
+ * ostida bo'lishi kerak. Kassir kun bo'yi to'lov yozadi, kutubxonachi kitob
+ * beradi — sinf va o'quvchi ro'yxati esa kamdan-kam ochiladi.
+ */
+const MOBILE_ORDER = ['/dashboard', '/payments', '/library'];
+
 function useOnline(): boolean {
   const [online, setOnline] = useState(navigator.onLine);
   useEffect(() => {
@@ -129,8 +139,16 @@ export function Layout({ children }: { children: ReactNode }) {
     : schoolNav;
 
   const allNav = [...mainNav, SETTINGS_NAV];
-  const primary = allNav.slice(0, MOBILE_SLOTS);
-  const overflow = allNav.slice(MOBILE_SLOTS);
+
+  // Telefonda MOBILE_ORDER dagilar oldinga chiqadi (mavjud bo'lganlari),
+  // qolgani "Yana" ga. Panelda "Yana" uchun bitta joy ajratiladi.
+  const preferred = MOBILE_ORDER
+    .map((to) => allNav.find((n) => n.to === to))
+    .filter((n): n is NavItem => !!n);
+  const rest = allNav.filter((n) => !preferred.includes(n));
+  const ordered = [...preferred, ...rest];
+  const primary = ordered.slice(0, MOBILE_SLOTS - 1);
+  const overflow = ordered.slice(MOBILE_SLOTS - 1);
 
   return (
     <div className="shell">

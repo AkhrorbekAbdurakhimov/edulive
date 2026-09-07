@@ -326,21 +326,42 @@ table.tbl { width: 100%; border-collapse: collapse; }
 }
 .bot-box .actions { margin-top: 10px; }
 
-/* Kutubxonada o'quvchi/kitob tanlash ro'yxati. Ochiladigan select emas:
-   qidirib topish kerak, ro'yxat uzun bo'lishi mumkin. */
-.pick-list { display: grid; gap: 4px; max-height: 190px; overflow-y: auto; margin-top: 8px; }
+/* ---------------------------------------------------------------- picker
+   Qidiruvli tanlagich. Ro'yxat maydon ustida SUZADI: oqimda tursa, ochilganda
+   quyidagi maydonlarni pastga surib yuborar va tugma qo'l ostidan qochardi. */
+.picker { position: relative; }
+.picker-input { position: relative; display: flex; }
+.picker-input .input { width: 100%; padding-right: 34px; }
+.picker-clear {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 24px; height: 24px; display: grid; place-items: center;
+  border: 0; background: transparent; color: var(--t3); cursor: pointer;
+  border-radius: 6px; font-size: 13px; line-height: 1;
+}
+.picker-clear:hover { background: var(--surface-3); color: var(--t1); }
+
+.picker-list {
+  position: absolute; z-index: 20; top: 100%; left: 0; right: 0; margin-top: 4px;
+  display: grid; gap: 2px; max-height: 232px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--r-control); padding: 4px;
+  box-shadow: 0 8px 24px rgba(15, 17, 21, .12);
+}
+:root[data-theme="dark"] .picker-list { box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
+
 .pick {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
-  text-align: left; padding: 8px 10px; border: 1px solid var(--border);
-  border-radius: var(--r-control); background: var(--surface); cursor: pointer;
-  font: inherit; color: var(--t1);
+  text-align: left; padding: 8px 10px; border: 1px solid transparent;
+  border-radius: var(--r-control); background: transparent; cursor: pointer;
+  font: inherit; color: var(--t1); width: 100%;
 }
-.pick:hover { background: var(--surface-2); }
+/* Klaviatura va sichqoncha bir xil ko'rinadi — tanlanayotgan qator bitta. */
+.pick.active { background: var(--surface-3); }
 .pick.on { border-color: var(--brand); background: var(--brand-soft); }
 /* Tanlanganini rang bilan emas, belgi bilan ham bildiramiz. */
 .pick.on strong::after { content: ' ✓'; color: var(--brand-ink); }
 .pick .muted { font-size: 12px; }
-.pick-list p.muted { padding: 8px 10px; margin: 0; }
+.picker-list p.muted { padding: 8px 10px; margin: 0; }
 
 /* Botga taklif havolasi — uzun, mobilda sindirib ko'rsatiladi. */
 .invite-link {

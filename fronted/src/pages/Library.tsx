@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, date, downloadFile } from '../lib/api';
 import { Chip, EmptyState, ErrorState, Modal, TableSkeleton } from '../components/ui';
 import { useReadOnly } from '../lib/auth';
+import { Picker } from '../components/Picker';
 
 interface BookRow {
   id: string; title: string; author: string | null; category: string;
@@ -543,50 +544,36 @@ function IssueModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="Kitob berish" onClose={onClose}>
       <form onSubmit={submit}>
-        <div className="field">
-          <label htmlFor="lib-student">O'quvchi</label>
-          <input
-            id="lib-student" className="input" placeholder="Familiya yoki ism bo'yicha qidiring…"
-            value={studentQ} onChange={(e) => { setStudentQ(e.target.value); setStudentId(''); }}
-          />
-          <div className="pick-list">
-            {students.data?.map((s) => (
-              <button
-                key={s.id} type="button"
-                className={`pick ${studentId === s.id ? 'on' : ''}`}
-                onClick={() => setStudentId(s.id)}
-              >
-                <strong>{s.last_name} {s.first_name}</strong>
-                <span className="muted">{s.class_name ?? 'sinfsiz'}</span>
-              </button>
-            ))}
-            {students.data?.length === 0 && <p className="muted">O'quvchi topilmadi</p>}
-          </div>
-        </div>
+        <Picker
+          label="O'quvchi"
+          placeholder="Familiya yoki ism bo'yicha qidiring…"
+          items={students.data ?? []}
+          loading={students.isPending}
+          value={studentId}
+          getKey={(s) => s.id}
+          getLabel={(s) => `${s.last_name} ${s.first_name}`}
+          getHint={(s) => s.class_name ?? 'sinfsiz'}
+          onSearch={setStudentQ}
+          onSelect={(s) => setStudentId(s?.id ?? '')}
+          emptyText="O'quvchi topilmadi"
+          required
+        />
 
-        <div className="field">
-          <label htmlFor="lib-book">Kitob</label>
-          <input
-            id="lib-book" className="input" placeholder="Kitob nomi yoki muallif…"
-            value={bookQ} onChange={(e) => { setBookQ(e.target.value); setBookId(''); }}
-          />
-          <span className="help">Faqat javonda bo'sh nusxasi bor kitoblar ko'rsatiladi.</span>
-          <div className="pick-list">
-            {books.data?.map((b) => (
-              <button
-                key={b.id} type="button"
-                className={`pick ${bookId === b.id ? 'on' : ''}`}
-                onClick={() => setBookId(b.id)}
-              >
-                <strong>{b.title}</strong>
-                <span className="muted">
-                  {b.author ?? '—'} · javonda {b.available_copies} ta
-                </span>
-              </button>
-            ))}
-            {books.data?.length === 0 && <p className="muted">Bo'sh kitob topilmadi</p>}
-          </div>
-        </div>
+        <Picker
+          label="Kitob"
+          placeholder="Kitob nomi yoki muallif…"
+          help="Faqat javonda bo'sh nusxasi bor kitoblar ko'rsatiladi."
+          items={books.data ?? []}
+          loading={books.isPending}
+          value={bookId}
+          getKey={(b) => b.id}
+          getLabel={(b) => b.title}
+          getHint={(b) => `${b.author ?? '—'} · javonda ${b.available_copies} ta`}
+          onSearch={setBookQ}
+          onSelect={(b) => setBookId(b?.id ?? '')}
+          emptyText="Bo'sh kitob topilmadi"
+          required
+        />
 
         <div className="field">
           <label htmlFor="lib-due">Qaytarish sanasi</label>
