@@ -1,0 +1,84 @@
+name: Android APK
+
+# O'qituvchi ilovasi APK'si. Lokal mashinada Android SDK/JDK yo'q — build
+# GitHub runner'ida (JDK 17 va Android SDK oldindan o'rnatilgan) yig'iladi
+# va Release sifatida chiqariladi: to'g'ridan-to'g'ri yuklab olish havolasi.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # Release yaratish uchun
+    defaults:
+      run:
+        working-directory: android
+    env:
+      API_URL: https://edulive.uz/api
+      ANDROID_VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: android/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: npm ci
+      - run: npm run typecheck
+
+      - name: Versiya
+        id: v
+        run: |
+          echo "version=$(node -p "require('./app.json').expo.version")" >> "$GITHUB_OUTPUT"
+          echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # Native android/ papkasi repoda saqlanmaydi — har build'da app.json'dan yaratiladi.
+      - name: Prebuild
+        run: npx expo prebuild --platform android --no-install
+
+      # Release debug keystore bilan imzolanadi (Expo shabloni sukuti) — test
+      # tarqatish uchun yetarli. Play Market uchun alohida keystore kerak bo'ladi.
+      - name: Gradle assembleRelease
+        working-directory: android/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: APK nomi
+        id: apk
+        run: |
+          name="edulive-teacher-${{ steps.v.outputs.version }}-${{ github.run_number }}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: android/${{ steps.apk.outputs.name }}
+          retention-days: 30
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-v${{ steps.v.outputs.version }}-${{ github.run_number }}
+          name: EduLive Android ${{ steps.v.outputs.version }} (build ${{ github.run_number }})
+          body: |
+            O'qituvchi ilovasi — release APK, server: ${{ env.API_URL }}
+            Commit: ${{ github.sha }}
+          files: android/${{ steps.apk.outputs.name }}

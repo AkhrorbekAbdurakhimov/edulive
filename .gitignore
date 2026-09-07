@@ -19,3 +19,7 @@ backups/
 .claude/
 *.tsbuildinfo
 .tsbuild/
+
+# Expo prebuild natijasi — faqat CI da yaratiladi (android-apk.yml)
+android/android/
+android/ios/
