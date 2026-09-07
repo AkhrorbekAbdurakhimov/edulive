@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
-import { api, saveToken, saveUser, type AuthedUser } from '../api';
+import { api, canUseApp, saveToken, saveUser, type AuthedUser } from '../api';
 import { useTheme } from '../theme';
 import { BigButton, Field, Icon } from '../ui';
 
@@ -19,9 +19,9 @@ export function LoginScreen({ onLogin }: { onLogin: (u: AuthedUser) => void }) {
         phone: phone.replace(/\s/g, ''),
         password,
       });
-      // Ilova faqat o'qituvchi uchun (DESIGN_PROMPT §6). Admin web'da ishlaydi.
-      if (data.user.role !== 'teacher') {
-        setError("Bu ilova faqat o'qituvchilar uchun. Administrator va menejer web orqali kiradi.");
+      // Maktab xodimlari kiradi; superadmin faqat web (DECISIONS M9).
+      if (!canUseApp(data.user.role)) {
+        setError('Platforma administratori tizimga faqat web orqali kiradi.');
         return;
       }
       await saveToken(data.token);
@@ -41,7 +41,7 @@ export function LoginScreen({ onLogin }: { onLogin: (u: AuthedUser) => void }) {
           <Icon name="check-square" size={22} color="#fff" />
         </View>
         <Text style={{ fontSize: 26, fontWeight: '700', color: c.t1, letterSpacing: -0.5 }}>EduLive</Text>
-        <Text style={{ fontSize: 14, color: c.t2, marginTop: 4, marginBottom: 28 }}>O'qituvchi ilovasi</Text>
+        <Text style={{ fontSize: 14, color: c.t2, marginTop: 4, marginBottom: 28 }}>Maktab xodimlari ilovasi</Text>
 
         <View style={{ gap: 14 }}>
           <Field

@@ -46,6 +46,7 @@ maket va mavjud API mantiqi to'qnashgan joylarda **mantiq ustun** qo'yildi:
 | M6 | — | Kech qolganda uzoq bosish → daqiqa (5/10/15/20/30) | Bot xabari "N daqiqa kechikdi" deb yoziladi; daqiqasiz `NULL` ketadi, `0 daqiqa` emas. |
 | M7 | — | Server rad etgan navbat yozuvi sababi bilan ko'rinadi | Oldingi versiya jimgina o'chirardi — o'qituvchi davomat ketdi deb o'ylardi. |
 | M8 | — | Navbat bo'sh bo'lmasa chiqish bloklanadi | Token o'chsa navbat yuborilmaydi; keyingi kirgan o'qituvchi nomidan ketishi mumkin. |
+| M9 | "Faqat o'qituvchi uchun" (DESIGN_PROMPT §6) | Admin, menejer va o'qituvchi kiradi; **superadmin faqat web** | Maktab admini ham koridorda davomat oladi/tekshiradi. Superadmin — platforma egasi, maktab ichki ishiga aralashmaydi (`platformReadOnly`). Backend allaqachon admin/menejerga davomat huquqi bergan; admin hamma sinfni ko'radi. |
 
 Maketning 5-ekrani (haftalik baho) 2-bosqichda `grades` moduli bilan birga qilinadi.
 

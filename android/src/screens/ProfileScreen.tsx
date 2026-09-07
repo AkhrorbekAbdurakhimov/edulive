@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import Constants from 'expo-constants';
-import { API_URL, api, saveToken, type AuthedUser } from '../api';
+import { API_URL, api, roleLabel, saveToken, type AuthedUser } from '../api';
 import { fmtPhone, initials } from '../format';
 import { useOnline } from '../net';
 import { useQueue } from '../store';
@@ -42,7 +42,7 @@ export function ProfileScreen({ user, onLogout }: { user: AuthedUser; onLogout: 
           <Avatar text={initials(user.fullName)} size={64} brand />
           <Text style={{ fontSize: 19, fontWeight: '700', color: c.t1, letterSpacing: -0.3 }}>{user.fullName}</Text>
           <Text style={{ fontSize: 13, color: c.t2 }}>{fmtPhone(user.phone) || ' '}</Text>
-          <Pill kind="brand" icon="user" label="O'qituvchi" />
+          <Pill kind="brand" icon="user" label={roleLabel(user.role)} />
         </View>
 
         <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: radius.card, backgroundColor: c.surface, overflow: 'hidden' }}>

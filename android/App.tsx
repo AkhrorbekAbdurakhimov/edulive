@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  api, clearCache, loadToken, loadUser, saveToken, saveUser, setUnauthorizedHandler, type AuthedUser,
+  api, canUseApp, clearCache, loadToken, loadUser, saveToken, saveUser, setUnauthorizedHandler, type AuthedUser,
 } from './src/api';
 import { startSync } from './src/net';
 import { queryClient, type ClassItem } from './src/queries';
@@ -19,7 +19,8 @@ import { AttendanceScreen } from './src/screens/AttendanceScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 
 /**
- * O'qituvchi ilovasi (development/mobile-ui.dc.html).
+ * Maktab xodimlari ilovasi — o'qituvchi, menejer, admin (development/mobile-ui.dc.html).
+ * Superadmin faqat web orqali kiradi (DECISIONS M9).
  *
  * Navigatsiya: 3 tab (Bugun · Sinflar · Profil) + tab ustida ochiladigan
  * ekranlar (sinf kartasi, davomat). Maketdagi "Baholar" tabi 2-bosqich —
@@ -75,6 +76,7 @@ function Root() {
       const cached = await loadUser();
       try {
         const me = await api<{ user: AuthedUser }>('/auth/me');
+        if (!canUseApp(me.user.role)) return await signOut();
         const user = { ...me.user, phone: me.user.phone ?? cached?.phone ?? null };
         await saveUser(user);
         setAuth({ state: 'in', user });

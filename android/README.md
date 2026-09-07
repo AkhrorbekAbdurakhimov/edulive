@@ -1,4 +1,6 @@
-# EduLive — o'qituvchi ilovasi (React Native + Expo)
+# EduLive — maktab xodimlari ilovasi (React Native + Expo)
+
+Kim kiradi: **o'qituvchi, menejer, administrator**. Superadmin faqat web orqali (DECISIONS M9).
 
 ```bash
 npm install
@@ -10,7 +12,7 @@ npm run typecheck
 Emulyatorda backend manzili `http://10.0.2.2:4000/api` (app.json → extra.apiUrl).
 Haqiqiy telefonda Expo Go bilan — kompyuterning LAN IP sini yozing.
 
-Seed hisob: `+998901112244 / teacher123` (backend `npm run db:reset`).
+Seed hisoblar: o'qituvchi `+998901112244 / teacher123`, admin `+998901112233 / admin123` (backend `npm run db:reset`).
 
 ## Nima uchun Expo
 

@@ -131,7 +131,7 @@ export function HomeScreen({
         ) : (
           <View style={{ gap: 9 }}>
             {rows.map((r) => (
-              <ClassCard key={r.id} row={r} mine={r.homeroom_teacher_id === user.id} onPress={() => onOpenClass(r, pending.filter((p) => p.id !== r.id))} />
+              <ClassCard key={r.id} row={r} mine={r.homeroom_teacher_id === user.id} teacher={user.role === 'teacher'} onPress={() => onOpenClass(r, pending.filter((p) => p.id !== r.id))} />
             ))}
           </View>
         )}
@@ -140,7 +140,7 @@ export function HomeScreen({
   );
 }
 
-function ClassCard({ row, mine, onPress }: { row: TodayClass; mine: boolean; onPress: () => void }) {
+function ClassCard({ row, mine, teacher, onPress }: { row: TodayClass; mine: boolean; teacher: boolean; onPress: () => void }) {
   const c = useTheme();
   const s = row.session;
   const detail =
@@ -148,7 +148,9 @@ function ClassCard({ row, mine, onPress }: { row: TodayClass; mine: boolean; onP
       ? `Kelmadi ${s.absent_count} · Kech ${s.late_count}`
       : s
         ? 'Hamma keldi'
-        : mine ? 'Sinf rahbari' : "Fan o'qituvchisi";
+        : mine ? 'Sinf rahbari'
+          : teacher ? "Fan o'qituvchisi"
+            : row.homeroom_teacher ? `Rahbar: ${row.homeroom_teacher}` : 'Rahbar belgilanmagan';
 
   return (
     <Card onPress={onPress}>

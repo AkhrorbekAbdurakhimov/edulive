@@ -49,6 +49,19 @@ export async function loadUser(): Promise<AuthedUser | null> {
   return raw ? (JSON.parse(raw) as AuthedUser) : null;
 }
 
+/**
+ * Ilovaga kim kiradi: maktab xodimlari (admin, menejer, o'qituvchi).
+ * Superadmin — platforma egasi, maktab ichki ishiga aralashmaydi, faqat web.
+ */
+export const canUseApp = (role: string): boolean => role !== 'superadmin';
+
+export const ROLE_LABELS: Record<string, string> = {
+  admin: 'Administrator',
+  manager: 'Menejer',
+  teacher: "O'qituvchi",
+};
+export const roleLabel = (role: string): string => ROLE_LABELS[role] ?? role;
+
 export class ApiError extends Error {
   constructor(
     public status: number,
