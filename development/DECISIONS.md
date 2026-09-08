@@ -48,6 +48,8 @@ maket va mavjud API mantiqi to'qnashgan joylarda **mantiq ustun** qo'yildi:
 | M8 | — | Navbat bo'sh bo'lmasa chiqish bloklanadi | Token o'chsa navbat yuborilmaydi; keyingi kirgan o'qituvchi nomidan ketishi mumkin. |
 | M9 | "Faqat o'qituvchi uchun" (DESIGN_PROMPT §6) | Admin, menejer va o'qituvchi kiradi; **superadmin faqat web** | Maktab admini ham koridorda davomat oladi/tekshiradi. Superadmin — platforma egasi, maktab ichki ishiga aralashmaydi (`platformReadOnly`). Backend allaqachon admin/menejerga davomat huquqi bergan; admin hamma sinfni ko'radi. |
 
+| M10 | — | Ilova o'zini yangilaydi: GitHub Release'dan yangi `versionCode` ni ko'rsa APK'ni yuklab, tizim o'rnatuvchisini ochadi | Play Market'da emas; o'qituvchidan APK qidirib qo'lda o'rnatishni talab qilib bo'lmaydi. EAS Update (OTA) hisob talab qiladi va native o'zgarishni qamramaydi. Repo ochiq — Release API tokensiz. Bir xil keystore → ustiga o'rnatiladi, ma'lumot saqlanadi. |
+
 Maketning 5-ekrani (haftalik baho) 2-bosqichda `grades` moduli bilan birga qilinadi.
 
 ## Ochiq masalalar

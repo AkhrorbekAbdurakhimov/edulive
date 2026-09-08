@@ -11,6 +11,8 @@ import { queryClient, type ClassItem } from './src/queries';
 import { clearLocalAttendance } from './src/store';
 import { dark, light, ThemeContext, useTheme } from './src/theme';
 import { Icon, type IconName } from './src/ui';
+import { useUpdateCheck } from './src/update';
+import { UpdateBanner, UpdateSheet } from './src/UpdateSheet';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { ClassesScreen } from './src/screens/ClassesScreen';
@@ -56,6 +58,17 @@ function Root() {
   const [tab, setTab] = useState<Tab>('today');
   const [stack, setStack] = useState<Route[]>([]);
   const [syncNote, setSyncNote] = useState<string | null>(null);
+
+  // O'z-o'zini yangilash (M10): ishga tushganda bir marta tekshiriladi, kirishdan qat'i nazar.
+  const upd = useUpdateCheck();
+  const [updOpen, setUpdOpen] = useState(false);
+  useEffect(() => { if (upd.prompt) setUpdOpen(true); }, [upd.prompt]);
+  const updateLayer = upd.update && (
+    <>
+      {!updOpen && <UpdateBanner info={upd.update} onPress={() => setUpdOpen(true)} />}
+      <UpdateSheet info={upd.update} open={updOpen} onClose={() => setUpdOpen(false)} />
+    </>
+  );
 
   const signOut = useCallback(async () => {
     await saveToken(null);
@@ -124,6 +137,7 @@ function Root() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: c.page }}>
         <StatusBar style="auto" />
+        {updateLayer}
         <LoginScreen onLogin={(user) => setAuth({ state: 'in', user })} />
       </SafeAreaView>
     );
@@ -135,6 +149,7 @@ function Root() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.surface }} edges={['top', 'left', 'right']}>
       <StatusBar style="auto" />
+      {updateLayer}
 
       {top?.name === 'attendance' && (
         <AttendanceScreen

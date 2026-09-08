@@ -64,3 +64,14 @@ src/theme.ts      tokenlar, HIT, radius, ThemeContext
    soat soni yozilmagan.
 7. Navbatda yuborilmagan davomat bo'lsa **chiqish bloklanadi** — token
    o'chsa u yuborilmay qoladi.
+8. **O'z-o'zini yangilash** (`src/update.ts`): ishga tushganda GitHub
+   Release'dagi oxirgi `android-v<ver>-<versionCode>` tegi tekshiriladi;
+   kattaroq bo'lsa sheet chiqadi → APK keshga yuklanadi → Android
+   o'rnatuvchisi ochiladi (`REQUEST_INSTALL_PACKAGES`). "Keyinroq" deyilsa
+   banner qoladi. Dev/Expo Go'da tekshiruv o'chiq (`__DEV__`).
+
+## Ikonka
+
+`assets/` dagi PNG'lar `scripts/make-icons.py` bilan yaratiladi (Pillow).
+Belgi — ochiq kitob (ta'lim) + yashil "live" nuqta (jonli xabarlar); ranglar `brand` va `good` tokenlari. Ikonkani o'zgartirish
+uchun skriptni tahrirlab qayta ishga tushiring, qo'lda PNG chizmang.
