@@ -137,3 +137,26 @@ test("noto'g'ri UUID 500 emas, 400 qaytaradi", async () => {
   const { status } = await api('GET', '/students/emas-uuid', undefined, school.adminToken);
   assert.equal(status, 400);
 });
+
+test("veb-forma orqali ham raqam yagona ko'rinishda saqlanadi", async () => {
+  const res = await api('POST', '/students', {
+    lastName: 'Formaviy', firstName: 'Otabek',
+    parent: { fullName: 'Formaviy Ota', phone: '901112233', relation: 'father' },
+  }, school.adminToken);
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+
+  const { rows } = await pool.query<{ phone: string }>(
+    `SELECT phone FROM parents WHERE school_id = $1 AND full_name = 'Formaviy Ota'`,
+    [school.schoolId],
+  );
+  assert.equal(rows[0].phone, '+998901112233', "'+' siz kiritilgan raqam ham normallashishi kerak");
+});
+
+test('yaroqsiz raqam veb-formada ham rad etiladi', async () => {
+  const res = await api('POST', '/students', {
+    lastName: 'Formaviy', firstName: 'Xato',
+    parent: { fullName: 'Xato Ota', phone: '12-34', relation: 'father' },
+  }, school.adminToken);
+  assert.equal(res.status, 400);
+  assert.match(JSON.stringify(res.body), /901234567/);
+});

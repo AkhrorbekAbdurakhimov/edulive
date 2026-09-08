@@ -32,7 +32,7 @@ export const COLUMNS: Column[] = [
   { header: 'Sinf',               width: 10, hint: 'masalan 1-A' },
   { header: 'Chegirma %',         width: 12, hint: '0 dan 100 gacha' },
   { header: 'Ota-ona F.I.Sh',     width: 24 },
-  { header: 'Ota-ona telefoni',   width: 18, hint: '+998XXXXXXXXX' },
+  { header: 'Ota-ona telefoni',   width: 18, hint: "+998901234567, 998901234567 yoki 901234567 — hammasi bo'ladi" },
   { header: 'Kim bo\'ladi',       width: 14, hint: 'ota / ona / vasiy' },
   { header: 'Maktab ID',          width: 14, hint: 'ixtiyoriy, takrorlanmaydi' },
 ];
@@ -106,7 +106,7 @@ export async function buildTemplate(classNames: string[]): Promise<Buffer> {
   // Namuna qator — kulrang, o'chirib tashlanadi degan izoh bilan
   const sample = ws.addRow([
     'Karimov', 'Alibek', 'Baxtiyor', '2019-04-12', "o'g'il",
-    classNames[0] ?? '1-A', 0, 'Karimov Baxtiyor', '+998901234567', 'ota', '',
+    classNames[0] ?? '1-A', 0, 'Karimov Baxtiyor', '998901234567', 'ota', '',
   ]);
   sample.font = { italic: true, color: { argb: 'FF9AA0A6' } };
 

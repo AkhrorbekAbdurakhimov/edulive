@@ -310,6 +310,11 @@ function ImportModal({ onClose }: { onClose: () => void }) {
             Familiya va ism majburiy, qolgani ixtiyoriy. Namuna qatorini o'chirib
             tashlang. Bir faylda 500 tagacha o'quvchi.
           </p>
+          <p className="muted">
+            Telefonni <strong>+</strong> siz yozsangiz ham bo'ladi — Excel <strong>+</strong> bilan
+            boshlangan katakni formula deb qabul qiladi. <span className="num">998901234567</span> ham,
+            <span className="num"> 901234567</span> ham to'g'ri.
+          </p>
         </li>
         <li>
           <strong>Faylni qaytaring.</strong>

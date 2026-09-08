@@ -10,12 +10,16 @@ import { badRequest, conflict, forbidden, notFound } from '../../utils/errors.js
 import { ah } from '../../utils/http.js';
 import { linkParent } from './students.service.js';
 import { parse, uuidParam } from '../../utils/validate.js';
+import { normalizePhone, PHONE_HINT } from '../../utils/phone.js';
 
 export const studentsRoutes = Router();
 studentsRoutes.use(requireTenant);
 
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Sana formati: YYYY-MM-DD');
-const phoneStr = z.string().regex(/^\+998\d{9}$/, "Telefon raqam formati noto'g'ri (+998XXXXXXXXX)");
+// Import bilan bir xil qoida. Yozuvning o'zi linkParent ichida yagona
+// ko'rinishga keltiriladi — bu yerda faqat tushunarli xato beriladi.
+const phoneStr = z.string().refine((v) => normalizePhone(v) !== null,
+  `Telefon raqam noto'g'ri. ${PHONE_HINT}`);
 
 const parentSchema = z.object({
   fullName: z.string().min(3, "Ota-ona ismi kamida 3 belgi"),

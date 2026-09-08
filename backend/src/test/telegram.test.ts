@@ -153,3 +153,25 @@ test("webhook: begona odamning kontakti qabul qilinmaydi", async () => {
   const row = await pool.query(`SELECT telegram_chat_id FROM parents WHERE id = $1`, [parentId]);
   assert.equal(row.rows[0].telegram_chat_id, null, 'begona kontakt bog\'lanmasligi kerak');
 });
+
+test("bot import qilingan raqamni topadi ('+' siz kiritilgan bo'lsa ham)", async () => {
+  // Import va Telegram bitta normalizePhone dan o'tadi. Ilgari ular ikki xil
+  // qoida ishlatardi — bu jimgina uzilib qolishi mumkin bo'lgan bog'lanish.
+  const { rows } = await pool.query<{ id: string }>(
+    `INSERT INTO parents (school_id, full_name, phone, relation)
+     VALUES ($1, 'Normalizatsiya Otasi', '+998901239876', 'father') RETURNING id`,
+    [school.schoolId],
+  );
+  const chatId = 778899;
+
+  const status = await hook(
+    { message: { chat: { id: chatId }, from: { id: chatId },
+                 contact: { phone_number: '998 90 123 98 76', user_id: chatId } } },
+    secret,
+  );
+  assert.equal(status, 200);
+
+  const linked = await pool.query<{ chat: string | null }>(
+    `SELECT telegram_chat_id::text AS chat FROM parents WHERE id = $1`, [rows[0].id]);
+  assert.equal(linked.rows[0].chat, String(chatId), 'raqam mos kelib, ota-ona ulanishi kerak');
+});

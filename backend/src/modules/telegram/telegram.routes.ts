@@ -15,6 +15,8 @@ import { pool } from '../../db/pool.js';
 import { env } from '../../config/env.js';
 import { ah } from '../../utils/http.js';
 import { tg, botForSchool } from './telegram.service.js';
+// Import bilan BIR XIL qoida — aks holda bazadagi raqam bilan mos kelmaydi.
+import { normalizePhone } from '../../utils/phone.js';
 
 /**
  * Xabar yuborish HECH QACHON webhookni yiqitmasligi kerak: Telegram
@@ -48,12 +50,6 @@ const ASK_CONTACT = {
   resize_keyboard: true,
   one_time_keyboard: true,
 };
-
-/** Telegram raqamni turlicha yuboradi: 998..., +998..., bo'sh joylar bilan. */
-function normalizePhone(raw: string): string {
-  const digits = raw.replace(/\D/g, '');
-  return digits.startsWith('998') ? `+${digits}` : `+998${digits.slice(-9)}`;
-}
 
 telegramRoutes.post(
   '/webhook/:secret',
@@ -113,6 +109,15 @@ telegramRoutes.post(
       }
 
       const phone = normalizePhone(msg.contact.phone_number);
+      if (!phone) {
+        await say(
+          token, chatId,
+          "Raqamni o'qib bo'lmadi. Iltimos, maktab ma'muriyatiga murojaat qiling.",
+          { remove_keyboard: true },
+        );
+        res.sendStatus(200);
+        return;
+      }
       const found = await pool.query<{ id: string; full_name: string; school_id: string }>(
         school
           ? `SELECT id, full_name, school_id FROM parents WHERE school_id = $2 AND phone = $1`

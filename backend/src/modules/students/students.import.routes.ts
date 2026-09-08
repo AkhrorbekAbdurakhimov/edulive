@@ -15,6 +15,7 @@ import { requireTenant } from '../../middleware/tenant.js';
 import { audit } from '../audit/audit.service.js';
 import { getCurrentYear } from '../schools/schools.service.js';
 import { badRequest } from '../../utils/errors.js';
+import { normalizePhone, PHONE_HINT } from '../../utils/phone.js';
 import { ah } from '../../utils/http.js';
 import { linkParent } from './students.service.js';
 import { buildTemplate, readWorkbook, MAX_ROWS } from './students.import.js';
@@ -160,16 +161,23 @@ studentsImportRoutes.post(
       let parent: ParsedRow['parent'] = null;
       if (pName || pPhone || pRel) {
         if (!pName || pName.length < 3) add(r.row, 'Ota-ona F.I.Sh', 'Ota-ona ismi kamida 3 belgi');
+
+        // Raqam qanday yozilgan bo'lsa ham yagona ko'rinishga keltiriladi:
+        // Excelda "+" bilan boshlash noqulay, shuning uchun "+" siz ham bo'ladi.
+        let phone: string | null = null;
         if (!pPhone) add(r.row, 'Ota-ona telefoni', 'Telefon kiritilishi shart');
-        else if (!/^\+998\d{9}$/.test(pPhone)) add(r.row, 'Ota-ona telefoni', 'Format: +998XXXXXXXXX');
+        else {
+          phone = normalizePhone(pPhone);
+          if (!phone) add(r.row, 'Ota-ona telefoni', PHONE_HINT);
+        }
 
         let rel: string | null = null;
         if (pRel) {
           rel = RELATIONS[pRel.toLowerCase()] ?? null;
           if (!rel) add(r.row, "Kim bo'ladi", '"ota", "ona" yoki "vasiy" bo\'lishi kerak');
         }
-        if (pName && pName.length >= 3 && pPhone && /^\+998\d{9}$/.test(pPhone)) {
-          parent = { fullName: pName, phone: pPhone, relation: rel };
+        if (pName && pName.length >= 3 && phone) {
+          parent = { fullName: pName, phone, relation: rel };
         }
       }
 

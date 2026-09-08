@@ -124,7 +124,7 @@ test('xato bo\'lsa HECH NARSA yozilmaydi va qator raqami ko\'rsatiladi', async (
     ['Ergashev', 'Aziz', null, '05.06.2019', null, className, 0, null, null, null, null], // sana formati
     ['Nazarov', 'Umar', null, null, null, 'YO\'Q-SINF', 0, null, null, null, null],      // sinf topilmaydi
     ['Islomov', 'Bilol', null, null, null, className, 150, null, null, null, null],      // chegirma
-    ['Saidov', 'Imron', null, null, null, className, 0, 'Saidov Ota', '901234567', 'ota', null], // telefon
+    ['Saidov', 'Imron', null, null, null, className, 0, 'Saidov Ota', '12-34', 'ota', null],      // telefon
   ]);
   const res = await upload(buf, school.adminToken);
   assert.equal(res.status, 400);
@@ -182,4 +182,38 @@ test("o'qituvchi import qila olmaydi", async () => {
   const buf = await sheetOf([['Aliyev', 'Botir', null, null, null, null, 0, null, null, null, null]]);
   const res = await upload(buf, school.teacherToken);
   assert.equal(res.status, 403);
+});
+
+// ============================================ telefon raqam ko'rinishlari
+
+test("telefon '+' siz ham qabul qilinadi va yagona ko'rinishda saqlanadi", async () => {
+  // Excelda "+" bilan boshlangan katak formula deb qabul qilinadi — shuning
+  // uchun maktablar raqamni "+" siz yozadi. Hamma ko'rinish bir xil saqlansin.
+  const buf = await sheetOf([
+    ['Telefonov', 'Birinchi', '', '', '', className, 0, 'Ota Bir', '998901110001', 'ota', ''],
+    ['Telefonov', 'Ikkinchi', '', '', '', className, 0, 'Ota Ikki', '901110002', 'ota', ''],
+    ['Telefonov', 'Uchinchi', '', '', '', className, 0, 'Ota Uch', '+998 90 111 00 03', 'ota', ''],
+    ['Telefonov', "To'rtinchi", '', '', '', className, 0, "Ota To'rt", '(90) 111-00-04', 'ota', ''],
+  ]);
+  const res = await upload(buf, school.adminToken);
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  assert.equal(res.body.parents, 4);
+
+  const { rows } = await pool.query<{ phone: string }>(
+    `SELECT phone FROM parents WHERE school_id = $1 AND full_name LIKE 'Ota %' ORDER BY phone`,
+    [school.schoolId],
+  );
+  assert.deepEqual(rows.map((r) => r.phone), [
+    '+998901110001', '+998901110002', '+998901110003', '+998901110004',
+  ], 'hammasi +998XXXXXXXXX ko\'rinishida bo\'lishi kerak');
+});
+
+test("yaroqsiz raqam tushunarli xato beradi", async () => {
+  const buf = await sheetOf([
+    ['Telefonov', 'Xato', '', '', '', className, 0, 'Ota Xato', '12345', 'ota', ''],
+  ]);
+  const res = await upload(buf, school.adminToken);
+  assert.equal(res.status, 400);
+  assert.equal(res.body.errors[0].column, 'Ota-ona telefoni');
+  assert.match(res.body.errors[0].message, /901234567/, res.body.errors[0].message);
 });
