@@ -309,8 +309,7 @@ function TelegramLink() {
       ) : (
         <>
           <p className="muted" style={{ marginTop: 0 }}>
-            Quyidagi tugmani bosing — Telegram ochiladi va hisobingiz botga bog'lanadi.
-            Havola 15 daqiqa amal qiladi.
+            Tugmani bosing — Telegram ochiladi va hisobingiz botga bog'lanadi.
           </p>
           {link ? (
             <>
@@ -321,7 +320,8 @@ function TelegramLink() {
                 <code className="invite-link">{link}</code>
               </div>
               <p className="help">
-                Ochilgach <strong>Boshlash</strong> tugmasini bosing. Ulangach shu sahifani yangilang.
+                Ochilgach <strong>Boshlash</strong> tugmasini bosing. Havola 15 daqiqa
+                amal qiladi; ulangach shu sahifani yangilang.
               </p>
             </>
           ) : (

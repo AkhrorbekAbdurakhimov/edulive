@@ -175,7 +175,10 @@ table.tbl { width: 100%; border-collapse: collapse; }
   padding: 24px; max-height: calc(100vh - 96px); overflow-y: auto;
 }
 .modal h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
-.modal .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+/* Amal tugmalari qatori. Ilgari faqat modal ichida qoida bor edi, shuning
+   uchun karta ichidagi "Saqlash" yuqoridagi matnga yopishib turardi. */
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.modal .actions { justify-content: flex-end; margin-top: 20px; }
 .modal .big-sum { font-size: 32px; font-weight: 600; letter-spacing: -0.02em; }
 
 /* ---------------------------------------------------------------- attendance grid */
