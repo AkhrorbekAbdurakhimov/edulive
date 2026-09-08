@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { API_URL, api, roleLabel, saveToken, saveUser, type AuthedUser } from '../api';
 import { ErrorText, FormSheet, Help, SaveNote } from '../forms';
+import { currentVersionCode, useUpdate } from '../update';
 import { fmtPhone, initials } from '../format';
 import { useOnline } from '../net';
 import { useQueue } from '../store';
@@ -18,6 +19,23 @@ export function ProfileScreen({ user, onLogout, onUserUpdate }: { user: AuthedUs
   const [confirmOut, setConfirmOut] = useState(false);
   const [busy, setBusy] = useState(false);
   const version = Constants.expoConfig?.version ?? '—';
+  const build = currentVersionCode();
+  const upd = useUpdate();
+  const [checking, setChecking] = useState(false);
+  const [checkNote, setCheckNote] = useState<string | null>(null);
+
+  // Qo'lda tekshirish: natija (yangi bor / oxirgisi / xato sababi) shu yerda ko'rinadi —
+  // "yangilanish kelmadi" degan savolga javob shu qatorda bo'lsin.
+  const checkUpdates = async () => {
+    if (!upd) return;
+    setChecking(true);
+    setCheckNote(null);
+    const r = await upd.check(true);
+    setChecking(false);
+    if (r.error) setCheckNote(r.error);
+    else if (r.info) setCheckNote(`Yangi versiya: build ${r.info.versionCode}`);
+    else setCheckNote(`Siz oxirgi versiyadasiz (build ${r.latest ?? build})`);
+  };
 
   // Navbatda yuborilmagan davomat bo'lsa chiqish bloklanadi: token o'chsa u
   // yuborilmay qoladi, keyingi kirgan odam nomidan ketib qolishi ham mumkin.
@@ -55,7 +73,8 @@ export function ProfileScreen({ user, onLogout, onUserUpdate }: { user: AuthedUs
 
         <View style={{ borderWidth: 1, borderColor: c.border, borderRadius: radius.card, backgroundColor: c.surface, overflow: 'hidden' }}>
           <Row icon="server" label="Server" value={API_URL.replace(/^https?:\/\//, '').replace(/\/api$/, '')} />
-          <Row icon="info" label="Ilova versiyasi" value={version} last />
+          <Row icon="info" label="Ilova versiyasi" value={`${version} · build ${build || 'dev'}`} />
+          <Row icon="refresh-cw" label={checking ? 'Tekshirilmoqda…' : 'Yangilanishni tekshirish'} value={checkNote ?? undefined} onPress={checkUpdates} last />
         </View>
 
         {blocked && (

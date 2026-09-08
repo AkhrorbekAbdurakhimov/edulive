@@ -76,7 +76,11 @@ src/theme.ts      tokenlar, HIT, radius, ThemeContext
    Release'dagi oxirgi `android-v<ver>-<versionCode>` tegi tekshiriladi;
    kattaroq bo'lsa sheet chiqadi → APK keshga yuklanadi → Android
    o'rnatuvchisi ochiladi (`REQUEST_INSTALL_PACKAGES`). "Keyinroq" deyilsa
-   banner qoladi. Dev/Expo Go'da tekshiruv o'chiq (`__DEV__`).
+   banner qoladi. Ilova oldinga chiqganda (15 daqiqadan keyin) qayta
+   tekshiriladi — Android jarayonni fonda tirik saqlaydi. Profil → "Ilova
+   versiyasi" build raqamini, "Yangilanishni tekshirish" esa natijani yoki
+   xato sababini ko'rsatadi. Dev/Expo Go'da tekshiruv o'chiq (`__DEV__`).
+   Build 3 va undan oldingi APK'larda tekshiruv yo'q — bir marta qo'lda o'rnatiladi.
 
 ## Ikonka
 

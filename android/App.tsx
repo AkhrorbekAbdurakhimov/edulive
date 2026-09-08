@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackHandler, Pressable, Text, useColorScheme, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -11,7 +11,7 @@ import { queryClient, type ClassItem } from './src/queries';
 import { clearLocalAttendance } from './src/store';
 import { dark, light, ThemeContext, useTheme } from './src/theme';
 import { Icon, Sheet, type IconName } from './src/ui';
-import { useUpdateCheck } from './src/update';
+import { UpdateContext, useUpdate, useUpdateCheck } from './src/update';
 import { UpdateBanner, UpdateSheet } from './src/UpdateSheet';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -82,11 +82,19 @@ export default function App() {
     <SafeAreaProvider>
       <ThemeContext.Provider value={scheme === 'dark' ? dark : light}>
         <QueryClientProvider client={queryClient}>
-          <Root />
+          <UpdateProvider>
+            <Root />
+          </UpdateProvider>
         </QueryClientProvider>
       </ThemeContext.Provider>
     </SafeAreaProvider>
   );
+}
+
+/** Yangilanish holati bitta joyda: Root sheet/banner ko'rsatadi, Profil qo'lda tekshiradi. */
+function UpdateProvider({ children }: { children: React.ReactNode }) {
+  const upd = useUpdateCheck();
+  return <UpdateContext.Provider value={upd}>{children}</UpdateContext.Provider>;
 }
 
 function Root() {
@@ -100,13 +108,12 @@ function Root() {
   const [payStudent, setPayStudent] = useState<StudentPick | null>(null);
 
   // O'z-o'zini yangilash (M10): ishga tushganda bir marta tekshiriladi, kirishdan qat'i nazar.
-  const upd = useUpdateCheck();
-  const [updOpen, setUpdOpen] = useState(false);
-  useEffect(() => { if (upd.prompt) setUpdOpen(true); }, [upd.prompt]);
+  const upd = useUpdate()!;
+  // prompt true bo'lganda sheet ochiladi; yopilganda prompt ham false — qayta ochilmasin.
   const updateLayer = upd.update && (
     <>
-      {!updOpen && <UpdateBanner info={upd.update} onPress={() => setUpdOpen(true)} />}
-      <UpdateSheet info={upd.update} open={updOpen} onClose={() => setUpdOpen(false)} />
+      {!upd.prompt && <UpdateBanner info={upd.update} onPress={() => upd.setPrompt(true)} />}
+      <UpdateSheet info={upd.update} open={upd.prompt} onClose={() => upd.setPrompt(false)} />
     </>
   );
 
