@@ -31,9 +31,16 @@ export const COLUMNS: Column[] = [
   { header: 'Jinsi',              width: 10, hint: "o'g'il / qiz" },
   { header: 'Sinf',               width: 10, hint: 'masalan 1-A' },
   { header: 'Chegirma %',         width: 12, hint: '0 dan 100 gacha' },
-  { header: 'Ota-ona F.I.Sh',     width: 24 },
-  { header: 'Ota-ona telefoni',   width: 18, hint: "+998901234567, 998901234567 yoki 901234567 — hammasi bo'ladi" },
-  { header: 'Kim bo\'ladi',       width: 14, hint: 'ota / ona / vasiy' },
+  // Ikkita mas'ul shaxs, har birida ikkita raqam. Ko'p maktabda ota ham,
+  // ona ham yoziladi va ularning ish/shaxsiy raqamlari alohida bo'ladi.
+  { header: "1-mas'ul F.I.Sh",             width: 24 },
+  { header: "1-mas'ul telefoni",           width: 18, hint: "+998901234567, 998901234567 yoki 901234567 — hammasi bo'ladi" },
+  { header: "1-mas'ul qo'shimcha telefoni", width: 22, hint: 'ixtiyoriy' },
+  { header: "1-mas'ul kim bo'ladi",        width: 18, hint: 'ota / ona / vasiy' },
+  { header: "2-mas'ul F.I.Sh",             width: 24, hint: 'ixtiyoriy' },
+  { header: "2-mas'ul telefoni",           width: 18, hint: 'ixtiyoriy' },
+  { header: "2-mas'ul qo'shimcha telefoni", width: 22, hint: 'ixtiyoriy' },
+  { header: "2-mas'ul kim bo'ladi",        width: 18, hint: 'ota / ona / vasiy' },
   { header: 'Maktab ID',          width: 14, hint: 'ixtiyoriy, takrorlanmaydi' },
 ];
 
@@ -106,7 +113,10 @@ export async function buildTemplate(classNames: string[]): Promise<Buffer> {
   // Namuna qator — kulrang, o'chirib tashlanadi degan izoh bilan
   const sample = ws.addRow([
     'Karimov', 'Alibek', 'Baxtiyor', '2019-04-12', "o'g'il",
-    classNames[0] ?? '1-A', 0, 'Karimov Baxtiyor', '998901234567', 'ota', '',
+    classNames[0] ?? '1-A', 0,
+    'Karimov Baxtiyor', '998901234567', '998971234567', 'ota',
+    'Karimova Dilnoza', '998901234568', '', 'ona',
+    '',
   ]);
   sample.font = { italic: true, color: { argb: 'FF9AA0A6' } };
 
@@ -133,9 +143,12 @@ export async function buildTemplate(classNames: string[]): Promise<Buffer> {
     ws.getCell(`E${r}`).dataValidation = {
       type: 'list', allowBlank: true, formulae: [`${SHEET_LOOKUP}!$B$2:$B$3`],
     };
-    ws.getCell(`J${r}`).dataValidation = {
-      type: 'list', allowBlank: true, formulae: [`${SHEET_LOOKUP}!$C$2:$C$4`],
-    };
+    // "Kim bo'ladi" endi ikki ustunda: 1-mas'ul (K) va 2-mas'ul (O)
+    for (const col of ['K', 'O']) {
+      ws.getCell(`${col}${r}`).dataValidation = {
+        type: 'list', allowBlank: true, formulae: [`${SHEET_LOOKUP}!$C$2:$C$4`],
+      };
+    }
   }
 
   const buf = await wb.xlsx.writeBuffer();

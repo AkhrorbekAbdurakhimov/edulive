@@ -29,11 +29,12 @@ notificationsRoutes.get(
     const { rows } = await pool.query(
       `SELECT n.id, n.kind, n.status, n.body, n.error, n.attempts,
               n.created_at, n.sent_at,
-              p.full_name AS parent_name, p.phone AS parent_phone,
+              p.full_name AS parent_name, pp.phone AS parent_phone,
               s.last_name || ' ' || s.first_name AS student_name,
               count(*) OVER()::int AS total_count
          FROM notifications n
          LEFT JOIN parents p ON p.id = n.parent_id AND p.school_id = n.school_id
+         LEFT JOIN parent_phones pp ON pp.id = n.parent_phone_id
          LEFT JOIN students s ON s.id = n.student_id AND s.school_id = n.school_id
         WHERE n.school_id = $1 AND ($2::text IS NULL OR n.status = $2)
         ORDER BY n.created_at DESC
@@ -105,20 +106,21 @@ notificationsRoutes.get(
     const { rows: stat } = await pool.query<{ total: number; connected: number }>(
       `SELECT count(*)::int AS total,
               count(telegram_chat_id)::int AS connected
-         FROM parents WHERE school_id = $1`,
+         FROM parent_phones WHERE school_id = $1`,
       [req.schoolId],
     );
 
     // Ulanmaganlar — maktab qo'ng'iroq qilib aytishi uchun
     const { rows: pending } = await pool.query(
-      `SELECT p.id, p.full_name, p.phone,
-              string_agg(s.last_name || ' ' || s.first_name, ', ' ORDER BY s.last_name) AS students
-         FROM parents p
+      `SELECT pp.id, p.full_name, pp.phone,
+              string_agg(DISTINCT s.last_name || ' ' || s.first_name, ', ') AS students
+         FROM parent_phones pp
+         JOIN parents p ON p.id = pp.parent_id
          LEFT JOIN student_parents sp ON sp.parent_id = p.id
          LEFT JOIN students s ON s.id = sp.student_id AND s.status = 'active'
-        WHERE p.school_id = $1 AND p.telegram_chat_id IS NULL
-        GROUP BY p.id, p.full_name, p.phone
-        ORDER BY p.full_name
+        WHERE pp.school_id = $1 AND pp.telegram_chat_id IS NULL
+        GROUP BY pp.id, p.full_name, pp.phone
+        ORDER BY p.full_name, pp.phone
         LIMIT 200`,
       [req.schoolId],
     );

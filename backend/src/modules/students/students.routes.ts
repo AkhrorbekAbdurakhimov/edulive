@@ -4,11 +4,11 @@ import { pool, tx } from '../../db/pool.js';
 import { requireRole } from '../../middleware/auth.js';
 import { requireTenant } from '../../middleware/tenant.js';
 import { audit } from '../audit/audit.service.js';
-import { getCurrentYear } from '../schools/schools.service.js';
+import { getCurrentYear, getSchoolSettings } from '../schools/schools.service.js';
 import { assertClassAccess } from '../classes/classes.service.js';
-import { badRequest, conflict, forbidden, notFound } from '../../utils/errors.js';
+import { conflict, forbidden, notFound } from '../../utils/errors.js';
 import { ah } from '../../utils/http.js';
-import { linkParent } from './students.service.js';
+import { guardiansOf, linkGuardian, addPhones, normalizePhones, MAX_PHONES } from './students.service.js';
 import { parse, uuidParam } from '../../utils/validate.js';
 import { normalizePhone, PHONE_HINT } from '../../utils/phone.js';
 
@@ -16,18 +16,29 @@ export const studentsRoutes = Router();
 studentsRoutes.use(requireTenant);
 
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Sana formati: YYYY-MM-DD');
-// Import bilan bir xil qoida. Yozuvning o'zi linkParent ichida yagona
+// Import bilan bir xil qoida. Yozuvning o'zi linkGuardian ichida yagona
 // ko'rinishga keltiriladi — bu yerda faqat tushunarli xato beriladi.
 const phoneStr = z.string().refine((v) => normalizePhone(v) !== null,
   `Telefon raqam noto'g'ri. ${PHONE_HINT}`);
 
-const parentSchema = z.object({
-  fullName: z.string().min(3, "Ota-ona ismi kamida 3 belgi"),
-  phone: phoneStr,
+/**
+ * Mas'ul shaxs: bitta odam, bir nechta raqam.
+ *
+ * `phone` (bitta) ham qabul qilinadi — eski mijozlar va oddiy holat uchun.
+ * Ikkalasi ham berilsa birlashtiriladi; birinchisi asosiy raqam bo'ladi.
+ */
+const guardianSchema = z.object({
+  fullName: z.string().min(3, "Mas'ul shaxs ismi kamida 3 belgi"),
+  phone: phoneStr.optional(),
+  phones: z.array(phoneStr).max(MAX_PHONES).optional(),
   relation: z.enum(['father', 'mother', 'guardian'], {
     errorMap: () => ({ message: "Qarindoshlik father, mother yoki guardian bo'lishi kerak" }),
   }),
-});
+}).transform((g) => ({
+  fullName: g.fullName,
+  relation: g.relation,
+  phones: [...(g.phone ? [g.phone] : []), ...(g.phones ?? [])],
+})).refine((g) => g.phones.length > 0, { message: 'Kamida bitta telefon raqam kerak' });
 
 
 // ---------------------------------------------------------------- ro'yxat
@@ -121,7 +132,9 @@ const createStudentSchema = z.object({
   monthlyFee: z.number().min(0).optional(),
   discountPercent: z.number().min(0, 'Chegirma 0-100% oralig\'ida').max(100, "Chegirma 0-100% oralig'ida").default(0),
   discountReason: z.string().optional(),
-  parent: parentSchema.optional(),
+  parent: guardianSchema.optional(),
+  // Bir nechta mas'ul shaxs bir yo'la kiritilishi mumkin.
+  guardians: z.array(guardianSchema).max(6).optional(),
 });
 
 studentsRoutes.post(
@@ -164,7 +177,11 @@ studentsRoutes.post(
         );
       }
 
-      if (input.parent) await linkParent(client, req.schoolId!, s.id, input.parent, true);
+      // Birinchi mas'ul shaxs asosiy: xabarlarda va ro'yxatlarda u ko'rsatiladi.
+      const guardians = [...(input.parent ? [input.parent] : []), ...(input.guardians ?? [])];
+      for (const [i, g] of guardians.entries()) {
+        await linkGuardian(client, req.schoolId!, s.id, g, i === 0);
+      }
 
       return s;
     });
@@ -198,14 +215,7 @@ studentsRoutes.get(
       await assertClassAccess(req.user!, req.schoolId!, student.class_id);
     }
 
-    const parents = await pool.query(
-      `SELECT p.id, p.full_name, p.phone, p.relation, p.telegram_verified_at IS NOT NULL AS telegram_linked, sp.is_primary
-         FROM student_parents sp
-         JOIN parents p ON p.id = sp.parent_id
-        WHERE sp.student_id = $1 AND p.school_id = $2
-        ORDER BY sp.is_primary DESC`,
-      [id, req.schoolId],
-    );
+    const guardians = await guardiansOf(pool, req.schoolId!, id);
 
     const finance = await pool.query(
       `SELECT
@@ -225,7 +235,7 @@ studentsRoutes.get(
 
     res.json({
       student,
-      parents: parents.rows,
+      parents: guardians,
       finance: {
         invoiced,
         paid: allocated,
@@ -398,40 +408,150 @@ studentsRoutes.patch(
   }),
 );
 
-// ---------------------------------------------------------------- arxivlash
+// ------------------------------------------------- maktabdan chiqarish
+/**
+ * O'quvchini ro'yxatdan chiqarish: arxiv, "ketdi" yoki "bitirdi".
+ *
+ * Biriktirish yopiladi (`ends_on`), shundan keyin yangi oylik hisob
+ * chiqarilmaydi. Proratsiya yoqilgan bo'lsa, joriy oyning chiqarilgan hisobi
+ * o'qilgan kunlarga qarab qayta hisoblanadi — aks holda 5-noyabrda ketgan
+ * bolaga to'liq noyabr qarz bo'lib qolardi.
+ */
 studentsRoutes.post(
   '/:id/archive',
   requireRole('admin', 'manager'),
   ah(async (req, res) => {
     const id = uuidParam(req);
-    const { reason } = parse(z.object({ reason: z.string().optional() }), req.body ?? {});
+    const input = parse(
+      z.object({
+        status: z.enum(['archived', 'left', 'graduated']).default('archived'),
+        // Ketgan sana — o'tmishda bo'lishi mumkin (hujjat keyinroq rasmiylashadi).
+        endsOn: dateStr.optional(),
+        reason: z.string().max(1000).optional(),
+      }),
+      req.body ?? {},
+    );
 
-    await tx(async (client) => {
+    const result = await tx(async (client) => {
       const { rows } = await client.query(
-        `UPDATE students SET status = 'archived', note = COALESCE($3, note), updated_at = now()
+        `UPDATE students SET status = $4, note = COALESCE($3, note), updated_at = now()
           WHERE id = $1 AND school_id = $2 AND status = 'active'
           RETURNING id`,
-        [id, req.schoolId, reason ?? null],
+        [id, req.schoolId, input.reason ?? null, input.status],
       );
-      if (!rows[0]) throw conflict("O'quvchi topilmadi yoki allaqachon arxivlangan");
+      if (!rows[0]) throw conflict("O'quvchi topilmadi yoki allaqachon ro'yxatdan chiqarilgan");
 
-      // Faol biriktirish yopiladi — keyingi oy hisob chiqarilmaydi.
+      const endsOn = input.endsOn ?? null;
       await client.query(
-        `UPDATE enrollments SET ends_on = CURRENT_DATE
+        `UPDATE enrollments SET ends_on = COALESCE($3::date, CURRENT_DATE)
           WHERE student_id = $1 AND school_id = $2 AND ends_on IS NULL`,
-        [id, req.schoolId],
+        [id, req.schoolId, endsOn],
       );
+
+      // Joriy oy hisobini qayta hisoblash — faqat proratsiya yoqilgan bo'lsa.
+      const settings = await getSchoolSettings(req.schoolId!, client);
+      let recalculated = 0;
+      if (settings.prorate_partial_months === true) {
+        const { rows: adj } = await client.query<{ id: string; amount: string }>(
+          `WITH target AS (
+             SELECT i.id,
+                    round(COALESCE(e.monthly_fee, c.monthly_fee) * GREATEST(0, (
+                      LEAST(e.ends_on, (i.period_month + interval '1 month - 1 day')::date)
+                      - GREATEST(e.starts_on, i.period_month) + 1
+                    ))::numeric
+                    / EXTRACT(DAY FROM (i.period_month + interval '1 month - 1 day')), 2) AS amount,
+                    e.discount_percent
+               FROM invoices i
+               JOIN enrollments e ON e.id = i.enrollment_id
+               JOIN classes c ON c.id = e.class_id
+              WHERE i.school_id = $2 AND i.student_id = $1 AND i.status <> 'void'
+                -- Faqat ketgan sana tushgan oy: o'tgan oylar to'liq o'qilgan.
+                AND e.ends_on BETWEEN i.period_month
+                    AND (i.period_month + interval '1 month - 1 day')::date
+           )
+           UPDATE invoices i
+              SET amount = t.amount,
+                  discount = round(t.amount * t.discount_percent / 100, 2)
+             FROM target t
+            WHERE i.id = t.id AND i.amount <> t.amount
+          RETURNING i.id, i.amount::text`,
+          [id, req.schoolId],
+        );
+        recalculated = adj.length;
+      }
 
       await audit(
         req,
-        { action: 'student.archive', entity: 'student', entityId: id, after: { reason: reason ?? null } },
+        {
+          action: 'student.archive',
+          entity: 'student',
+          entityId: id,
+          after: { status: input.status, endsOn, reason: input.reason ?? null, recalculated },
+        },
         client,
       );
+      return { recalculated };
+    });
+
+    res.json({ ok: true, ...result });
+  }),
+);
+
+/**
+ * O'quvchini butunlay o'chirish.
+ *
+ * Faqat MOLIYAVIY TARIXI YO'Q o'quvchi o'chiriladi. Sabab: students ga 8 ta
+ * jadval ON DELETE CASCADE bilan bog'langan — to'lov va hisoblar ham. Xato
+ * kiritilgan yozuvni tozalash uchun kerak, ketgan o'quvchi uchun emas:
+ * unga "ketdi" deb belgilash ishlatiladi, tarixi saqlanib qoladi.
+ */
+studentsRoutes.delete(
+  '/:id',
+  requireRole('admin'),
+  ah(async (req, res) => {
+    const id = uuidParam(req);
+
+    const { rows } = await client_counts(id, req.schoolId!);
+    if (!rows.length) throw notFound("O'quvchi topilmadi");
+    const c = rows[0];
+    const blockers: string[] = [];
+    if (c.payments > 0) blockers.push(`${c.payments} ta to'lov`);
+    if (c.invoices > 0) blockers.push(`${c.invoices} ta hisob`);
+    if (c.attendance > 0) blockers.push(`${c.attendance} ta davomat yozuvi`);
+    if (blockers.length) {
+      throw conflict(
+        `O'chirib bo'lmaydi — ${blockers.join(', ')} bor. ` +
+        `Buning o'rniga "Ketdi" deb belgilang, shunda tarixi saqlanib qoladi`,
+      );
+    }
+
+    await tx(async (client) => {
+      // Audit avval: o'quvchi o'chgach entity_id bo'yicha nom topilmaydi.
+      await audit(req, {
+        action: 'student.delete', entity: 'student', entityId: id,
+        before: { name: `${c.last_name} ${c.first_name}` },
+      }, client);
+      await client.query(`DELETE FROM students WHERE id = $1 AND school_id = $2`, [id, req.schoolId]);
     });
 
     res.json({ ok: true });
   }),
 );
+
+/** O'chirishga to'sqinlik qiladigan yozuvlar soni. */
+function client_counts(id: string, schoolId: string) {
+  return pool.query<{
+    last_name: string; first_name: string;
+    payments: number; invoices: number; attendance: number;
+  }>(
+    `SELECT s.last_name, s.first_name,
+            (SELECT count(*)::int FROM payments WHERE student_id = s.id) AS payments,
+            (SELECT count(*)::int FROM invoices WHERE student_id = s.id) AS invoices,
+            (SELECT count(*)::int FROM attendance WHERE student_id = s.id) AS attendance
+       FROM students s WHERE s.id = $1 AND s.school_id = $2`,
+    [id, schoolId],
+  );
+}
 
 // ---------------------------------------------------------------- ota-ona qo'shish
 studentsRoutes.post(
@@ -439,17 +559,140 @@ studentsRoutes.post(
   requireRole('admin', 'manager'),
   ah(async (req, res) => {
     const id = uuidParam(req);
-    const input = parse(parentSchema.extend({ isPrimary: z.boolean().default(false) }), req.body);
+    const input = parse(
+      z.object({ isPrimary: z.boolean().default(false) }).passthrough(),
+      req.body,
+    );
+    const g = parse(guardianSchema, req.body);
 
     const student = await pool.query(`SELECT 1 FROM students WHERE id = $1 AND school_id = $2`, [id, req.schoolId]);
     if (!student.rowCount) throw notFound("O'quvchi topilmadi");
 
     const parentId = await tx(async (client) => {
-      const pid = await linkParent(client, req.schoolId!, id, input, input.isPrimary);
-      if (!pid) throw badRequest("Ota-onani bog'lab bo'lmadi");
+      const pid = await linkGuardian(client, req.schoolId!, id, g, input.isPrimary);
+      await audit(req, { action: 'guardian.add', entity: 'student', entityId: id,
+                         after: { fullName: g.fullName, phones: g.phones.length } }, client);
       return pid;
     });
 
     res.status(201).json({ parentId });
+  }),
+);
+
+// ------------------------------------------------- mas'ul shaxs va raqamlari
+
+/** Mas'ul shaxsni o'quvchidan uzish. Odam o'chirilmaydi — boshqa farzandi bo'lishi mumkin. */
+studentsRoutes.delete(
+  '/:id/parents/:parentId',
+  requireRole('admin', 'manager'),
+  ah(async (req, res) => {
+    const studentId = uuidParam(req);
+    const parentId = uuidParam(req, 'parentId');
+
+    const { rowCount } = await pool.query(
+      `DELETE FROM student_parents sp
+        USING parents p
+        WHERE sp.student_id = $1 AND sp.parent_id = $2
+          AND p.id = sp.parent_id AND p.school_id = $3`,
+      [studentId, parentId, req.schoolId],
+    );
+    if (!rowCount) throw notFound("Mas'ul shaxs topilmadi");
+
+    // Hech bir o'quvchiga bog'lanmay qolgan odam ortiqcha — yozuvi bilan
+    // birga raqamlari va Telegram ulanishi ham ketadi (CASCADE).
+    await pool.query(
+      `DELETE FROM parents p
+        WHERE p.id = $1 AND p.school_id = $2
+          AND NOT EXISTS (SELECT 1 FROM student_parents WHERE parent_id = p.id)`,
+      [parentId, req.schoolId],
+    );
+
+    await audit(req, { action: 'guardian.remove', entity: 'student', entityId: studentId,
+                       before: { parentId } });
+    res.json({ ok: true });
+  }),
+);
+
+/** Mavjud mas'ul shaxsga qo'shimcha raqam. */
+studentsRoutes.post(
+  '/parents/:parentId/phones',
+  requireRole('admin', 'manager'),
+  ah(async (req, res) => {
+    const parentId = uuidParam(req, 'parentId');
+    const { phone } = parse(z.object({ phone: phoneStr }), req.body);
+
+    const owner = await pool.query(`SELECT 1 FROM parents WHERE id = $1 AND school_id = $2`,
+      [parentId, req.schoolId]);
+    if (!owner.rowCount) throw notFound("Mas'ul shaxs topilmadi");
+
+    await addPhones(pool, req.schoolId!, parentId, normalizePhones([phone]));
+    await audit(req, { action: 'guardian.phone.add', entity: 'parent', entityId: parentId });
+    res.status(201).json({ ok: true });
+  }),
+);
+
+/** Raqamni o'chirish. Oxirgi raqam o'chirilmaydi — aks holda odamga xabar yo'li qolmaydi. */
+studentsRoutes.delete(
+  '/parents/:parentId/phones/:phoneId',
+  requireRole('admin', 'manager'),
+  ah(async (req, res) => {
+    const parentId = uuidParam(req, 'parentId');
+    const phoneId = uuidParam(req, 'phoneId');
+
+    const { rows } = await pool.query<{ c: number }>(
+      `SELECT count(*)::int AS c FROM parent_phones WHERE parent_id = $1 AND school_id = $2`,
+      [parentId, req.schoolId]);
+    if (rows[0].c <= 1) throw conflict("Oxirgi raqamni o'chirib bo'lmaydi");
+
+    const { rows: gone } = await pool.query<{ is_primary: boolean }>(
+      `DELETE FROM parent_phones WHERE id = $1 AND parent_id = $2 AND school_id = $3
+       RETURNING is_primary`,
+      [phoneId, parentId, req.schoolId]);
+    if (!gone[0]) throw notFound('Raqam topilmadi');
+
+    // Asosiy raqam o'chgan bo'lsa, eng eskisi asosiy bo'ladi — bittasi bo'lishi shart.
+    if (gone[0].is_primary) {
+      await pool.query(
+        `UPDATE parent_phones SET is_primary = true
+          WHERE id = (SELECT id FROM parent_phones
+                       WHERE parent_id = $1 AND school_id = $2
+                       ORDER BY created_at LIMIT 1)`,
+        [parentId, req.schoolId]);
+    }
+
+    await audit(req, { action: 'guardian.phone.remove', entity: 'parent', entityId: parentId });
+    res.json({ ok: true });
+  }),
+);
+
+/** Asosiy raqamni almashtirish yoki xabarni yoqish/o'chirish. */
+studentsRoutes.patch(
+  '/parents/:parentId/phones/:phoneId',
+  requireRole('admin', 'manager'),
+  ah(async (req, res) => {
+    const parentId = uuidParam(req, 'parentId');
+    const phoneId = uuidParam(req, 'phoneId');
+    const input = parse(
+      z.object({ isPrimary: z.boolean().optional(), notifyEnabled: z.boolean().optional() }),
+      req.body,
+    );
+
+    await tx(async (client) => {
+      if (input.isPrimary) {
+        await client.query(
+          `UPDATE parent_phones SET is_primary = (id = $1)
+            WHERE parent_id = $2 AND school_id = $3`,
+          [phoneId, parentId, req.schoolId]);
+      }
+      if (input.notifyEnabled !== undefined) {
+        const { rowCount } = await client.query(
+          `UPDATE parent_phones SET notify_enabled = $4
+            WHERE id = $1 AND parent_id = $2 AND school_id = $3`,
+          [phoneId, parentId, req.schoolId, input.notifyEnabled]);
+        if (!rowCount) throw notFound('Raqam topilmadi');
+      }
+    });
+
+    res.json({ ok: true });
   }),
 );

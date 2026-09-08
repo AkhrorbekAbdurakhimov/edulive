@@ -116,6 +116,15 @@ test("sinfda bo'lmagan o'quvchini belgilash 400", async () => {
 });
 
 test("tasdiqlash: bildirishnomalar navbatga tushadi, takror tasdiqlash 409", async () => {
+  // Xabar faqat BOTGA ULANGAN raqamga navbatga qo'yiladi — to'lov va qarz
+  // eslatmasi bilan bir xil qoida. Aks holda navbat albatta yiqiladigan
+  // xabarlar bilan to'lib ketardi.
+  await pool.query(
+    `UPDATE parent_phones SET telegram_chat_id = 71000001
+      WHERE school_id = $1 AND phone = '+998936660000'`,
+    [school.schoolId],
+  );
+
   const confirmed = await api('POST', `/attendance/${sessionId}/confirm`, {}, school.teacherToken);
   assert.equal(confirmed.status, 200);
   // students[0] absent va uning ota-onasi bor → kamida 1 ta bildirishnoma

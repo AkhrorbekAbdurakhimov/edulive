@@ -39,7 +39,7 @@ before(async () => {
   }, school.adminToken);
   assert.equal(res.status, 201, JSON.stringify(res.body));
 
-  const p = await pool.query(`SELECT id FROM parents WHERE school_id = $1 AND phone = $2`,
+  const p = await pool.query(`SELECT parent_id AS id FROM parent_phones WHERE school_id = $1 AND phone = $2`,
     [school.schoolId, PARENT_PHONE]);
   parentId = p.rows[0].id;
 
@@ -114,7 +114,7 @@ async function hook(body: unknown, headerSecret: string | null, path = secret) {
 }
 
 test('webhook: sarlavhasiz yoki begona secret bilan hech nima qilmaydi', async () => {
-  const before2 = await pool.query(`SELECT telegram_chat_id FROM parents WHERE id = $1`, [parentId]);
+  const before2 = await pool.query(`SELECT telegram_chat_id FROM parent_phones WHERE parent_id = $1`, [parentId]);
   assert.equal(before2.rows[0].telegram_chat_id, null);
 
   // Sarlavha yo'q
@@ -122,7 +122,7 @@ test('webhook: sarlavhasiz yoki begona secret bilan hech nima qilmaydi', async (
   // Sarlavha bor, lekin manzil begona
   assert.equal(await hook({ message: { chat: { id: 1 } } }, 'boshqa', 'boshqa'), 200);
 
-  const after2 = await pool.query(`SELECT telegram_chat_id FROM parents WHERE id = $1`, [parentId]);
+  const after2 = await pool.query(`SELECT telegram_chat_id FROM parent_phones WHERE parent_id = $1`, [parentId]);
   assert.equal(after2.rows[0].telegram_chat_id, null, 'hech narsa bog\'lanmasligi kerak');
 });
 
@@ -135,7 +135,7 @@ test("webhook: tasdiqlangan raqam ota-onaga bog'lanadi", async () => {
   assert.equal(status, 200);
 
   const row = await pool.query(
-    `SELECT telegram_chat_id, telegram_verified_at, notify_enabled FROM parents WHERE id = $1`,
+    `SELECT telegram_chat_id, telegram_verified_at, notify_enabled FROM parent_phones WHERE parent_id = $1`,
     [parentId],
   );
   assert.equal(String(row.rows[0].telegram_chat_id), String(chatId));
@@ -144,13 +144,13 @@ test("webhook: tasdiqlangan raqam ota-onaga bog'lanadi", async () => {
 });
 
 test("webhook: begona odamning kontakti qabul qilinmaydi", async () => {
-  await pool.query(`UPDATE parents SET telegram_chat_id = NULL WHERE id = $1`, [parentId]);
+  await pool.query(`UPDATE parent_phones SET telegram_chat_id = NULL WHERE parent_id = $1`, [parentId]);
   // contact.user_id != from.id — kimdir boshqaning raqamini yubordi
   await hook(
     { message: { chat: { id: 777 }, from: { id: 777 }, contact: { phone_number: PARENT_PHONE, user_id: 999 } } },
     secret,
   );
-  const row = await pool.query(`SELECT telegram_chat_id FROM parents WHERE id = $1`, [parentId]);
+  const row = await pool.query(`SELECT telegram_chat_id FROM parent_phones WHERE parent_id = $1`, [parentId]);
   assert.equal(row.rows[0].telegram_chat_id, null, 'begona kontakt bog\'lanmasligi kerak');
 });
 
@@ -158,8 +158,13 @@ test("bot import qilingan raqamni topadi ('+' siz kiritilgan bo'lsa ham)", async
   // Import va Telegram bitta normalizePhone dan o'tadi. Ilgari ular ikki xil
   // qoida ishlatardi — bu jimgina uzilib qolishi mumkin bo'lgan bog'lanish.
   const { rows } = await pool.query<{ id: string }>(
-    `INSERT INTO parents (school_id, full_name, phone, relation)
-     VALUES ($1, 'Normalizatsiya Otasi', '+998901239876', 'father') RETURNING id`,
+    `WITH p AS (
+       INSERT INTO parents (school_id, full_name, relation)
+       VALUES ($1, 'Normalizatsiya Otasi', 'father') RETURNING id
+     )
+     INSERT INTO parent_phones (school_id, parent_id, phone, is_primary)
+     SELECT $1, p.id, '+998901239876', true FROM p
+     RETURNING id`,
     [school.schoolId],
   );
   const chatId = 778899;
@@ -172,6 +177,6 @@ test("bot import qilingan raqamni topadi ('+' siz kiritilgan bo'lsa ham)", async
   assert.equal(status, 200);
 
   const linked = await pool.query<{ chat: string | null }>(
-    `SELECT telegram_chat_id::text AS chat FROM parents WHERE id = $1`, [rows[0].id]);
+    `SELECT telegram_chat_id::text AS chat FROM parent_phones WHERE id = $1`, [rows[0].id]);
   assert.equal(linked.rows[0].chat, String(chatId), 'raqam mos kelib, ota-ona ulanishi kerak');
 });

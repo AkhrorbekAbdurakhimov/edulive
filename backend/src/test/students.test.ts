@@ -62,7 +62,10 @@ test("o'quvchi sinf va ota-ona bilan yaratiladi, kartada hammasi ko'rinadi", asy
   assert.equal(card.body.student.class_id, school.classId);
   assert.equal(card.body.student.discount_percent, 25);
   assert.equal(card.body.parents.length, 1);
-  assert.equal(card.body.parents[0].phone, '+998935551234');
+  assert.deepEqual(
+    card.body.parents[0].phones.map((x: { phone: string }) => x.phone),
+    ['+998935551234'],
+  );
   assert.equal(card.body.finance.outstanding, 0);
 
   // Qidiruv ishlaydi
@@ -146,7 +149,9 @@ test("veb-forma orqali ham raqam yagona ko'rinishda saqlanadi", async () => {
   assert.equal(res.status, 201, JSON.stringify(res.body));
 
   const { rows } = await pool.query<{ phone: string }>(
-    `SELECT phone FROM parents WHERE school_id = $1 AND full_name = 'Formaviy Ota'`,
+    `SELECT pp.phone FROM parent_phones pp
+       JOIN parents p ON p.id = pp.parent_id
+      WHERE pp.school_id = $1 AND p.full_name = 'Formaviy Ota'`,
     [school.schoolId],
   );
   assert.equal(rows[0].phone, '+998901112233', "'+' siz kiritilgan raqam ham normallashishi kerak");

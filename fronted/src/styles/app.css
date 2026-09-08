@@ -370,3 +370,28 @@ table.tbl { width: 100%; border-collapse: collapse; }
   border-radius: var(--r-control); padding: 6px 10px;
   overflow-wrap: anywhere; max-width: 100%;
 }
+
+/* ---------------------------------------------------------------- mas'ul shaxslar
+   Har bir raqam alohida Telegram chatiga ulanadi, shuning uchun raqamlar
+   ro'yxat ko'rinishida: holati va amallari har birida alohida. */
+.guardian { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.guardian:last-child { border-bottom: 0; }
+.phone-list { list-style: none; margin: 6px 0 4px; padding: 0; display: grid; gap: 6px; }
+.phone-list li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.phone-actions { display: inline-flex; gap: 2px; flex-wrap: wrap; }
+.phone-actions .btn { padding: 2px 6px; }
+@media (max-width: 640px) {
+  /* Telefonda amallar raqam ostiga tushadi — yonma-yon sig'maydi. */
+  .phone-list li { align-items: flex-start; }
+  .phone-actions { width: 100%; }
+}
+
+/* Yangi o'quvchi oynasidagi mas'ul shaxs bloklari */
+.form-sub { font-size: 14px; font-weight: 600; margin: 18px 0 8px; }
+.guardian-draft {
+  border: 1px solid var(--border); border-radius: var(--r-control);
+  padding: 12px; margin-bottom: 10px; background: var(--surface-2);
+}
+
+/* Oynada xavfli amalni ajratib turadigan chiziq */
+.sep { border: 0; border-top: 1px solid var(--border); margin: 18px 0 12px; }

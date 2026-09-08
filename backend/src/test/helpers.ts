@@ -146,15 +146,23 @@ export async function createTestStudent(
   ).rows[0].id;
 
   if (opts?.parentPhone) {
-    const parentId = (
+    // Raqam alohida jadvalda: bitta odamda bir nechta raqam bo'lishi mumkin.
+    const existing = await pool.query<{ parent_id: string }>(
+      `SELECT parent_id FROM parent_phones WHERE school_id = $1 AND phone = $2`,
+      [school.schoolId, opts.parentPhone],
+    );
+    const parentId = existing.rows[0]?.parent_id ?? (
       await pool.query<{ id: string }>(
-        `INSERT INTO parents (school_id, full_name, phone, relation)
-         VALUES ($1, $2, $3, 'father')
-         ON CONFLICT (school_id, phone) DO UPDATE SET full_name = EXCLUDED.full_name
-         RETURNING id`,
-        [school.schoolId, `Ota ${lastName}`, opts.parentPhone],
+        `INSERT INTO parents (school_id, full_name, relation)
+         VALUES ($1, $2, 'father') RETURNING id`,
+        [school.schoolId, `Ota ${lastName}`],
       )
     ).rows[0].id;
+    await pool.query(
+      `INSERT INTO parent_phones (school_id, parent_id, phone, is_primary)
+       VALUES ($1,$2,$3,true) ON CONFLICT (school_id, phone) DO NOTHING`,
+      [school.schoolId, parentId, opts.parentPhone],
+    );
     await pool.query(
       `INSERT INTO student_parents (student_id, parent_id, is_primary) VALUES ($1,$2,true) ON CONFLICT DO NOTHING`,
       [studentId, parentId],

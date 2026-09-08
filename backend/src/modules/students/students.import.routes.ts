@@ -17,7 +17,7 @@ import { getCurrentYear } from '../schools/schools.service.js';
 import { badRequest } from '../../utils/errors.js';
 import { normalizePhone, PHONE_HINT } from '../../utils/phone.js';
 import { ah } from '../../utils/http.js';
-import { linkParent } from './students.service.js';
+import { linkGuardian, type GuardianInput } from './students.service.js';
 import { buildTemplate, readWorkbook, MAX_ROWS } from './students.import.js';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -93,7 +93,7 @@ interface ParsedRow {
   classId: string | null;
   discount: number;
   externalId: string | null;
-  parent: { fullName: string; phone: string; relation: string | null } | null;
+  guardians: GuardianInput[];
 }
 
 studentsImportRoutes.post(
@@ -121,7 +121,9 @@ studentsImportRoutes.post(
     const parsed: ParsedRow[] = [];
 
     for (const r of rows) {
-      const [last, first, middle, birth, gender, cls, discount, pName, pPhone, pRel, ext] = r.values;
+      const [last, first, middle, birth, gender, cls, discount,
+             g1Name, g1Phone, g1Extra, g1Rel,
+             g2Name, g2Phone, g2Extra, g2Rel, ext] = r.values;
 
       if (!last || last.length < 2) add(r.row, 'Familiya', 'Familiya kamida 2 belgi');
       if (!first || first.length < 2) add(r.row, 'Ism', 'Ism kamida 2 belgi');
@@ -158,27 +160,49 @@ studentsImportRoutes.post(
         }
       }
 
-      let parent: ParsedRow['parent'] = null;
-      if (pName || pPhone || pRel) {
-        if (!pName || pName.length < 3) add(r.row, 'Ota-ona F.I.Sh', 'Ota-ona ismi kamida 3 belgi');
+      // Ikkita mas'ul shaxs bir xil qoida bilan o'qiladi.
+      const guardians: GuardianInput[] = [];
+      const readGuardian = (
+        n: number, name: string | null, main: string | null,
+        extra: string | null, rel: string | null,
+      ) => {
+        if (!name && !main && !extra && !rel) return;   // bo'sh blok — o'tkazamiz
+        const who = `${n}-mas'ul`;
+        if (!name || name.length < 3) add(r.row, `${who} F.I.Sh`, 'Ism kamida 3 belgi');
 
         // Raqam qanday yozilgan bo'lsa ham yagona ko'rinishga keltiriladi:
         // Excelda "+" bilan boshlash noqulay, shuning uchun "+" siz ham bo'ladi.
-        let phone: string | null = null;
-        if (!pPhone) add(r.row, 'Ota-ona telefoni', 'Telefon kiritilishi shart');
+        const phones: string[] = [];
+        if (!main) add(r.row, `${who} telefoni`, 'Telefon kiritilishi shart');
         else {
-          phone = normalizePhone(pPhone);
-          if (!phone) add(r.row, 'Ota-ona telefoni', PHONE_HINT);
+          const p1 = normalizePhone(main);
+          if (!p1) add(r.row, `${who} telefoni`, PHONE_HINT);
+          else phones.push(p1);
+        }
+        if (extra) {
+          const p2 = normalizePhone(extra);
+          if (!p2) add(r.row, `${who} qo'shimcha telefoni`, PHONE_HINT);
+          else if (!phones.includes(p2)) phones.push(p2);
         }
 
-        let rel: string | null = null;
-        if (pRel) {
-          rel = RELATIONS[pRel.toLowerCase()] ?? null;
-          if (!rel) add(r.row, "Kim bo'ladi", '"ota", "ona" yoki "vasiy" bo\'lishi kerak');
+        let relation: string | null = null;
+        if (rel) {
+          relation = RELATIONS[rel.toLowerCase()] ?? null;
+          if (!relation) add(r.row, `${who} kim bo'ladi`, "\"ota\", \"ona\" yoki \"vasiy\" bo'lishi kerak");
         }
-        if (pName && pName.length >= 3 && phone) {
-          parent = { fullName: pName, phone, relation: rel };
+
+        if (name && name.length >= 3 && phones.length) {
+          guardians.push({ fullName: name, phones, relation });
         }
+      };
+      readGuardian(1, g1Name, g1Phone, g1Extra, g1Rel);
+      readGuardian(2, g2Name, g2Phone, g2Extra, g2Rel);
+
+      // Bir xil raqam ikkala blokda bo'lsa, ikkinchisi birinchisiga qo'shilib
+      // ketardi va "kim bo'ladi" chalkashardi. Ochiq aytamiz.
+      if (guardians.length === 2) {
+        const dup = guardians[0].phones.find((x) => guardians[1].phones.includes(x));
+        if (dup) add(r.row, "2-mas'ul telefoni", `"${dup}" 1-mas'ul shaxsda ham bor`);
       }
 
       if (ext) {
@@ -197,7 +221,7 @@ studentsImportRoutes.post(
         classId,
         discount: disc,
         externalId: ext,
-        parent,
+        guardians,
       });
     }
 
@@ -244,8 +268,9 @@ studentsImportRoutes.post(
             [req.schoolId, id, p.classId, year.id, p.discount],
           );
         }
-        if (p.parent) {
-          await linkParent(client, req.schoolId!, id, p.parent, true);
+        // Birinchi mas'ul shaxs asosiy: ro'yxatlarda va xabarlarda u ko'rsatiladi.
+        for (const [gi, g] of p.guardians.entries()) {
+          await linkGuardian(client, req.schoolId!, id, g, gi === 0);
           parents += 1;
         }
       }

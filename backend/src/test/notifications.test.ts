@@ -29,7 +29,7 @@ before(async () => {
     await createTestStudent(school, 'Xabarov', 'Ali', { parentPhone: PARENT_PHONE })
   ).studentId;
 
-  const p = await pool.query(`SELECT id FROM parents WHERE school_id = $1 AND phone = $2`,
+  const p = await pool.query(`SELECT parent_id AS id FROM parent_phones WHERE school_id = $1 AND phone = $2`,
     [school.schoolId, PARENT_PHONE]);
   parentId = p.rows[0].id;
 });
@@ -56,7 +56,7 @@ test("botga ulanmagan ota-onaga xabar navbatga QO'YILMAYDI", async () => {
 test("to'lovda kvitansiya xabari navbatga tushadi", async () => {
   // Ota-ona botga ulangan holat
   await pool.query(
-    `UPDATE parents SET telegram_chat_id = 4242, telegram_verified_at = now() WHERE id = $1`,
+    `UPDATE parent_phones SET telegram_chat_id = 4242, telegram_verified_at = now() WHERE parent_id = $1`,
     [parentId],
   );
 
@@ -78,7 +78,7 @@ test("to'lovda kvitansiya xabari navbatga tushadi", async () => {
 });
 
 test("xabarni o'chirgan ota-onaga yozilmaydi", async () => {
-  await pool.query(`UPDATE parents SET notify_enabled = false WHERE id = $1`, [parentId]);
+  await pool.query(`UPDATE parent_phones SET notify_enabled = false WHERE parent_id = $1`, [parentId]);
   const before2 = await pool.query(
     `SELECT count(*)::int AS c FROM notifications WHERE student_id = $1`, [studentId]);
 
@@ -87,7 +87,7 @@ test("xabarni o'chirgan ota-onaga yozilmaydi", async () => {
   const after2 = await pool.query(
     `SELECT count(*)::int AS c FROM notifications WHERE student_id = $1`, [studentId]);
   assert.equal(after2.rows[0].c, before2.rows[0].c, 'notify_enabled=false bo\'lsa yozilmaydi');
-  await pool.query(`UPDATE parents SET notify_enabled = true WHERE id = $1`, [parentId]);
+  await pool.query(`UPDATE parent_phones SET notify_enabled = true WHERE parent_id = $1`, [parentId]);
 });
 
 test("jo'natuvchi: bot ulanmagan bo'lsa xabar 'failed' bo'ladi, navbat tiqilmaydi", async () => {
@@ -112,7 +112,7 @@ test("jo'natuvchi ikkinchi marta o'sha xabarni qayta olmaydi", async () => {
 
 test("chat_id yo'q bo'lsa sabab yoziladi (qayta urinilmaydi)", async () => {
   // Qo'lda navbatga qo'yamiz, lekin ota-onada chat yo'q
-  await pool.query(`UPDATE parents SET telegram_chat_id = NULL WHERE id = $1`, [parentId]);
+  await pool.query(`UPDATE parent_phones SET telegram_chat_id = NULL WHERE parent_id = $1`, [parentId]);
   await pool.query(
     `INSERT INTO notifications (school_id, parent_id, student_id, kind, body)
      VALUES ($1, $2, $3, 'test.manual', 'sinov')`,
@@ -136,7 +136,7 @@ test('qarz eslatmasi: botga ulanmagan bo\'lsa tushunarli xato qaytadi', async ()
 
 test('qarz eslatmasi navbatga tushadi va kuniga bir marta yuboriladi', async () => {
   await pool.query(
-    `UPDATE parents SET telegram_chat_id = 4242, notify_enabled = true WHERE id = $1`,
+    `UPDATE parent_phones SET telegram_chat_id = 4242, notify_enabled = true WHERE parent_id = $1`,
     [parentId],
   );
 
@@ -190,17 +190,44 @@ test("maktabning o'z boti bo'lsa havola o'sha botga ketadi", async () => {
   );
 });
 
-test('ulanmagan ota-onalar ro\'yxati va sanoq to\'g\'ri', async () => {
-  await pool.query(`UPDATE parents SET telegram_chat_id = NULL WHERE id = $1`, [parentId]);
+test("ulanmagan RAQAMLAR ro'yxati va sanoq to'g'ri", async () => {
+  // Sanoq odam emas, RAQAM darajasida: bir odamning bir raqami ulangan,
+  // ikkinchisi ulanmagan bo'lishi mumkin va ikkinchisi ham chaqirilishi kerak.
+  await pool.query(`UPDATE parent_phones SET telegram_chat_id = NULL WHERE parent_id = $1`, [parentId]);
   const before = await api('GET', '/notifications/telegram', undefined, school.adminToken);
   assert.equal(before.body.parents.connected, 0);
-  assert.ok(before.body.pending.some((p: { id: string }) => p.id === parentId), 'ulanmagan ro\'yxatda');
-  assert.ok(before.body.pending[0].phone, 'telefon raqami qaytadi — maktab qo\'ng\'iroq qiladi');
+  assert.ok(before.body.pending.some((x: { phone: string }) => x.phone === PARENT_PHONE),
+    "ulanmagan raqam ro'yxatda bo'lishi kerak");
 
-  await pool.query(`UPDATE parents SET telegram_chat_id = 555 WHERE id = $1`, [parentId]);
+  await pool.query(`UPDATE parent_phones SET telegram_chat_id = 555 WHERE parent_id = $1`, [parentId]);
   const after2 = await api('GET', '/notifications/telegram', undefined, school.adminToken);
   assert.equal(after2.body.parents.connected, 1);
-  assert.ok(!after2.body.pending.some((p: { id: string }) => p.id === parentId), 'ulangach ro\'yxatdan chiqadi');
+  assert.ok(!after2.body.pending.some((x: { phone: string }) => x.phone === PARENT_PHONE),
+    "ulangach ro'yxatdan chiqadi");
+});
+
+test('bir odamning ikki raqami ham xabar oladi', async () => {
+  // Qo'shimcha raqam qo'shamiz va ikkalasini ham botga ulangan qilamiz.
+  await pool.query(
+    `INSERT INTO parent_phones (school_id, parent_id, phone, telegram_chat_id)
+     VALUES ($1, $2, '+998901237799', 9999)
+     ON CONFLICT (school_id, phone) DO UPDATE SET telegram_chat_id = 9999`,
+    [school.schoolId, parentId],
+  );
+  await pool.query(
+    `UPDATE parent_phones SET telegram_chat_id = 4242 WHERE parent_id = $1 AND is_primary`,
+    [parentId]);
+
+  const before = await pool.query<{ c: number }>(
+    `SELECT count(*)::int AS c FROM notifications WHERE student_id = $1 AND kind = 'payment.received'`,
+    [studentId]);
+  const pay = await api('POST', '/payments', { studentId, amount: 5_000, provider: 'cash' }, school.adminToken);
+  assert.equal(pay.status, 201, JSON.stringify(pay.body));
+
+  const after2 = await pool.query<{ c: number }>(
+    `SELECT count(*)::int AS c FROM notifications WHERE student_id = $1 AND kind = 'payment.received'`,
+    [studentId]);
+  assert.equal(after2.rows[0].c - before.rows[0].c, 2, 'ikkala raqamga ham xabar yozilishi kerak');
 });
 
 test("boshqa maktabning ota-onasi ro'yxatga tushmaydi", async () => {

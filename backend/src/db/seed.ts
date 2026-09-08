@@ -187,18 +187,30 @@ async function seed() {
           ? '+998935550003' // ikkala farzand uchun bitta raqam
           : `+99893555${String(1000 + studentNo).slice(-4)}`;
 
-        const parent = (
-          await db.query<{ id: string }>(
-            `INSERT INTO parents (school_id, full_name, phone, relation)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (school_id, phone) DO UPDATE SET full_name = parents.full_name
-             RETURNING id`,
-            [school.id, `${parentFirst} ${parentSurname}`, parentPhone, isFather ? 'father' : 'mother'],
-          )
-        ).rows[0];
+        // Raqam alohida jadvalda (006): aka-uka bir raqam bilan bitta
+        // mas'ul shaxsga bog'lanadi, shuning uchun avval raqamni qidiramiz.
+        const existingPhone = await db.query<{ parent_id: string }>(
+          `SELECT parent_id FROM parent_phones WHERE school_id = $1 AND phone = $2`,
+          [school.id, parentPhone],
+        );
+        const parent = existingPhone.rows[0]
+          ? { id: existingPhone.rows[0].parent_id }
+          : (
+            await db.query<{ id: string }>(
+              `INSERT INTO parents (school_id, full_name, relation) VALUES ($1,$2,$3) RETURNING id`,
+              [school.id, `${parentFirst} ${parentSurname}`, isFather ? 'father' : 'mother'],
+            )
+          ).rows[0];
 
         await db.query(
-          `INSERT INTO student_parents (student_id, parent_id, is_primary) VALUES ($1, $2, true)`,
+          `INSERT INTO parent_phones (school_id, parent_id, phone, is_primary)
+           VALUES ($1,$2,$3,true) ON CONFLICT (school_id, phone) DO NOTHING`,
+          [school.id, parent.id, parentPhone],
+        );
+
+        await db.query(
+          `INSERT INTO student_parents (student_id, parent_id, is_primary)
+           VALUES ($1, $2, true) ON CONFLICT DO NOTHING`,
           [student.id, parent.id],
         );
 

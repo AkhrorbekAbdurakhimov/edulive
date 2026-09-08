@@ -38,9 +38,9 @@ export async function dispatchQueued(limit = 50): Promise<DispatchResult> {
 
   const { rows } = await pool.query<QueuedRow>(
     `SELECT n.id, n.school_id, n.body, n.kind, n.attempts,
-            p.telegram_chat_id::text AS chat_id
+            pp.telegram_chat_id::text AS chat_id
        FROM notifications n
-       LEFT JOIN parents p ON p.id = n.parent_id
+       LEFT JOIN parent_phones pp ON pp.id = n.parent_phone_id
       WHERE n.status = 'queued' AND n.channel = 'telegram' AND n.attempts < $1
       ORDER BY n.created_at
       LIMIT $2
@@ -66,7 +66,7 @@ export async function dispatchQueued(limit = 50): Promise<DispatchResult> {
     if (!n.chat_id) {
       await pool.query(
         `UPDATE notifications SET status = 'failed', error = $2, attempts = attempts + 1 WHERE id = $1`,
-        [n.id, "ota-ona Telegram botga ulanmagan"],
+        [n.id, "mas'ul shaxsning bu raqami Telegram botga ulanmagan"],
       );
       result.skipped += 1;
       continue;

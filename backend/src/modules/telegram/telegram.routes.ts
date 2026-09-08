@@ -118,10 +118,16 @@ telegramRoutes.post(
         res.sendStatus(200);
         return;
       }
-      const found = await pool.query<{ id: string; full_name: string; school_id: string }>(
+      // Chat RAQAMGA bog'lanadi: bitta odamning ikki raqami ikki xil chat
+      // bo'lishi mumkin va ikkalasiga ham xabar borishi kerak.
+      const found = await pool.query<{ id: string; parent_id: string; full_name: string; school_id: string }>(
         school
-          ? `SELECT id, full_name, school_id FROM parents WHERE school_id = $2 AND phone = $1`
-          : `SELECT id, full_name, school_id FROM parents WHERE phone = $1`,
+          ? `SELECT pp.id, pp.parent_id, p.full_name, pp.school_id
+               FROM parent_phones pp JOIN parents p ON p.id = pp.parent_id
+              WHERE pp.school_id = $2 AND pp.phone = $1`
+          : `SELECT pp.id, pp.parent_id, p.full_name, pp.school_id
+               FROM parent_phones pp JOIN parents p ON p.id = pp.parent_id
+              WHERE pp.phone = $1`,
         school ? [phone, school.id] : [phone],
       );
 
@@ -149,7 +155,7 @@ telegramRoutes.post(
 
       const parent = found.rows[0];
       await pool.query(
-        `UPDATE parents
+        `UPDATE parent_phones
             SET telegram_chat_id = $2, telegram_verified_at = now(), notify_enabled = true
           WHERE id = $1`,
         [parent.id, chatId],
@@ -161,7 +167,7 @@ telegramRoutes.post(
            JOIN students s ON s.id = sp.student_id
           WHERE sp.parent_id = $1 AND s.status = 'active'
           ORDER BY s.last_name`,
-        [parent.id],
+        [parent.parent_id],
       );
 
       await say(

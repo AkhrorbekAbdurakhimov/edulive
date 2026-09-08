@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth, roleLabel, type User } from '../lib/auth';
 import { initials } from '../components/ui';
@@ -12,6 +12,7 @@ export default function Settings() {
       </div>
       <Profile />
       <ChangePassword />
+      <SchoolSettings />
     </div>
   );
 }
@@ -172,6 +173,84 @@ function ChangePassword() {
         <div className="actions">
           <button className="btn btn-primary" disabled={blocked || change.isPending}>
             {change.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
+          </button>
+        </div>
+      </form>
+    </Section>
+  );
+}
+
+/**
+ * Maktab sozlamalari (3-qoida: kodda emas, bazada).
+ *
+ * Faqat admin uchun: to'lov muddati va oy ulushi pulga tegadi.
+ */
+function SchoolSettings() {
+  const { user } = useAuth();
+  const [dueDay, setDueDay] = useState('10');
+  const [prorate, setProrate] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const q = useQuery({
+    queryKey: ['school-settings'],
+    enabled: user?.role === 'admin',
+    queryFn: async () => {
+      const { data } = await api.get<{ school: { settings: Record<string, unknown> } }>('/school');
+      const s = data.school.settings ?? {};
+      setDueDay(String(s.payment_due_day ?? 10));
+      setProrate(s.prorate_partial_months === true);
+      return s;
+    },
+  });
+
+  const save = useMutation({
+    mutationFn: async () =>
+      (await api.patch('/school/settings', {
+        payment_due_day: Number(dueDay) || 10,
+        prorate_partial_months: prorate,
+      })).data,
+    onSuccess: () => setDone(true),
+  });
+
+  // Faqat maktab admini o'zgartira oladi; boshqalarga umuman ko'rsatilmaydi.
+  if (user?.role !== 'admin') return null;
+  if (q.isPending) return null;
+
+  return (
+    <Section title="Maktab sozlamalari" hint="Hisob-kitobga ta'sir qiladi — o'zgartirish audit jurnaliga yoziladi.">
+      <form onSubmit={(e: FormEvent) => { e.preventDefault(); setDone(false); save.mutate(); }}>
+        <div className="field">
+          <label htmlFor="st-due">To'lov muddati kuni</label>
+          <input
+            id="st-due" className="input num" type="number" min={1} max={28}
+            value={dueDay} onChange={(e) => { setDone(false); setDueDay(e.target.value); }}
+          />
+          <span className="help">Oylik hisob shu kunda to'lanishi kerak.</span>
+        </div>
+
+        <label className="check-row">
+          <input
+            type="checkbox" checked={prorate}
+            onChange={(e) => { setDone(false); setProrate(e.target.checked); }}
+          />
+          <span>
+            Oy ulushini hisobga olish
+            <span className="help">
+              O'quv yili o'rtasida kelgan yoki ketgan o'quvchiga to'liq oy emas,
+              o'qigan kunlari uchun hisob yoziladi. O'chirilgan bo'lsa har doim
+              to'liq oy.
+            </span>
+          </span>
+        </label>
+
+        {save.error != null && (
+          <p className="hint">{(save.error as any)?.response?.data?.error ?? "Saqlab bo'lmadi"}</p>
+        )}
+        {done && <p className="save-note">✓ Saqlandi</p>}
+
+        <div className="actions">
+          <button className="btn btn-primary" disabled={save.isPending}>
+            {save.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
           </button>
         </div>
       </form>

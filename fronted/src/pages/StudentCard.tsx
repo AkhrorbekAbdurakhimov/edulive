@@ -6,6 +6,7 @@ import { api, date, money } from '../lib/api';
 import { ErrorState, TableSkeleton, initials, invoiceChip } from '../components/ui';
 import { ArchiveModal, EditClassModal, EditInfoModal } from '../components/StudentEdit';
 import { StudentBooks } from './Library';
+import { Guardians, type Guardian } from '../components/Guardians';
 
 interface CardData {
   student: {
@@ -14,8 +15,7 @@ interface CardData {
     class_id: string | null; class_name: string | null;
     monthly_fee: number | null; discount_percent: number | null; discount_reason: string | null;
   };
-  parents: Array<{ id: string; full_name: string; phone: string; relation: string | null;
-                   is_primary: boolean; telegram_linked: boolean }>;
+  parents: Guardian[];
   finance: { invoiced: number; paid: number; outstanding: number; advance: number };
 }
 interface InvoiceRow {
@@ -23,7 +23,6 @@ interface InvoiceRow {
   due_date: string; status: string; paid: number; outstanding: number;
 }
 
-const REL: Record<string, string> = { father: 'Otasi', mother: 'Onasi', guardian: 'Vasiy' };
 
 export default function StudentCard() {
   const { id } = useParams<{ id: string }>();
@@ -131,28 +130,7 @@ export default function StudentCard() {
         )}
       </div>
 
-      <div className="card card-pad">
-        <h2>Ota-onalar</h2>
-        {card.data.parents.length === 0 ? (
-          <p className="muted">Ota-ona qo'shilmagan.</p>
-        ) : (
-          card.data.parents.map((p) => (
-            <div key={p.id} className="row" style={{ padding: '8px 0' }}>
-              <span className="avatar">{initials(p.full_name)}</span>
-              <div>
-                <strong>{p.full_name}</strong>{' '}
-                {p.is_primary && <span className="chip neutral">asosiy</span>}{' '}
-                {/* Botga ulanmagan ota-onaga xabar bormaydi — buni shu yerda
-                    ko'rsatmasak, "nega xabar kelmadi?" degan savol javobsiz qoladi. */}
-                {p.telegram_linked
-                  ? <span className="chip good">✓ Telegram</span>
-                  : <span className="chip warn">◔ Botga ulanmagan</span>}
-                <div className="muted">{p.relation ? REL[p.relation] : ''} · <span className="num">{p.phone}</span></div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+      <Guardians studentId={s.id} guardians={card.data.parents} readOnly={readOnly} />
 
       {canLibrary && (
         <div className="card" style={{ marginTop: 16 }}>

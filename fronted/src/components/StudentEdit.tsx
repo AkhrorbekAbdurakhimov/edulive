@@ -190,37 +190,109 @@ export function EditClassModal({ s, onClose }: { s: EditableStudent; onClose: ()
   );
 }
 
+/**
+ * O'quvchini ro'yxatdan chiqarish yoki butunlay o'chirish.
+ *
+ * O'chirish faqat MOLIYAVIY TARIXI YO'Q o'quvchi uchun: students ga to'lov va
+ * hisoblar CASCADE bilan bog'langan, ya'ni o'chirish ularni ham olib ketadi.
+ * Ketgan o'quvchiga "Ketdi" ishlatiladi — tarixi saqlanib qoladi.
+ */
 export function ArchiveModal({ id, name, onClose, onDone }: {
   id: string; name: string; onClose: () => void; onDone: () => void;
 }) {
   const qc = useQueryClient();
+  const [status, setStatus] = useState('left');
+  const [endsOn, setEndsOn] = useState(() => new Date().toISOString().slice(0, 10));
   const [reason, setReason] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const done = () => { qc.invalidateQueries({ queryKey: ['students'] }); onDone(); };
 
   const archive = useMutation({
     mutationFn: async () =>
-      (await api.post(`/students/${id}/archive`, { reason: reason.trim() || undefined })).data,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['students'] }); onDone(); },
+      (await api.post(`/students/${id}/archive`, {
+        status, endsOn, reason: reason.trim() || undefined,
+      })).data as { recalculated: number },
+    onSuccess: done,
   });
-  const errMsg = (archive.error as any)?.response?.data?.error;
+
+  const remove = useMutation({
+    mutationFn: async () => (await api.delete(`/students/${id}`)).data,
+    onSuccess: done,
+  });
+
+  const errMsg = ((archive.error ?? remove.error) as any)?.response?.data?.error;
+
+  const LABEL: Record<string, string> = {
+    left: "Ketdi — boshqa maktabga o'tdi",
+    graduated: 'Bitirdi',
+    archived: "Arxivga (sabab ko'rsatilmagan)",
+  };
 
   return (
-    <Modal title="O'quvchini arxivlash" onClose={onClose}>
-      <p><strong>{name}</strong> arxivga o'tkaziladi.</p>
+    <Modal title="Ro'yxatdan chiqarish" onClose={onClose}>
+      <p><strong>{name}</strong> faol ro'yxatdan chiqadi.</p>
       <p className="muted">
-        Ro'yxatdan chiqadi va sinfdagi biriktirish yopiladi. Hisoblari va
-        to'lovlari saqlanib qoladi — o'chirilmaydi.
+        Sinfdagi biriktirish yopiladi va keyingi oylarga hisob chiqarilmaydi.
+        Hisoblari va to'lovlari saqlanib qoladi.
       </p>
+
       <div className="field" style={{ marginTop: 12 }}>
-        <label>Sabab (ixtiyoriy)</label>
-        <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} />
+        <label htmlFor="ar-status">Sabab</label>
+        <select id="ar-status" className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
+          {Object.entries(LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
       </div>
+
+      <div className="field">
+        <label htmlFor="ar-date">Ketgan sana</label>
+        <input id="ar-date" className="input" type="date" value={endsOn}
+               onChange={(e) => setEndsOn(e.target.value)} />
+        <span className="help">
+          Oy ulushi sozlamasi yoqilgan bo'lsa, shu oyning hisobi o'qilgan
+          kunlarga qarab qayta hisoblanadi.
+        </span>
+      </div>
+
+      <div className="field">
+        <label htmlFor="ar-note">Izoh (ixtiyoriy)</label>
+        <input id="ar-note" className="input" value={reason}
+               onChange={(e) => setReason(e.target.value)} />
+      </div>
+
       {errMsg && <p className="hint" style={{ marginTop: 10 }}>{errMsg}</p>}
+
       <div className="actions">
         <button className="btn btn-secondary" onClick={onClose}>Bekor qilish</button>
         <button className="btn btn-danger" onClick={() => archive.mutate()} disabled={archive.isPending}>
-          {archive.isPending ? 'Arxivlanmoqda…' : 'Arxivlash'}
+          {archive.isPending ? 'Bajarilmoqda…' : "Ro'yxatdan chiqarish"}
         </button>
       </div>
+
+      <hr className="sep" />
+      {!confirmDelete ? (
+        <button type="button" className="btn btn-ghost sm" onClick={() => setConfirmDelete(true)}>
+          Butunlay o'chirish
+        </button>
+      ) : (
+        <div>
+          <p className="hint" style={{ marginTop: 0 }}>
+            Butunlay o'chirish qaytarib bo'lmaydi. Faqat xato kiritilgan yozuv uchun —
+            to'lovi yoki hisobi bo'lsa tizim ruxsat bermaydi.
+          </p>
+          <div className="row">
+            <button type="button" className="btn btn-secondary sm" onClick={() => setConfirmDelete(false)}>
+              Bekor qilish
+            </button>
+            <button
+              type="button" className="btn btn-danger sm"
+              onClick={() => remove.mutate()} disabled={remove.isPending}
+            >
+              {remove.isPending ? "O'chirilmoqda…" : "Ha, butunlay o'chirilsin"}
+            </button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

@@ -13,6 +13,26 @@ import { parse } from '../../utils/validate.js';
 const monthStr = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Oy formati: YYYY-MM');
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Sana formati: YYYY-MM-DD');
 
+/**
+ * Oy ulushi (proratsiya) — hisob summasini o'qilgan kunlarga bo'ladi.
+ *
+ * 20-oktabrda kelgan bolaga to'liq oktabr hisobini yozish adolatsiz, 5-noyabrda
+ * ketganga to'liq noyabr ham shunday. Sozlama o'chirilgan bo'lsa (sukut) eski
+ * xatti-harakat saqlanadi — mavjud maktablarning hisobi o'z-o'zidan o'zgarmasin.
+ *
+ * $2 — oyning birinchi kuni. Ulush 0 dan 1 gacha; to'liq oy uchun aynan 1
+ * bo'ladi, ya'ni proratsiyasiz natija bilan bir xil chiqadi.
+ */
+const PRORATE_FACTOR = `
+  CASE WHEN NOT $5::boolean THEN 1 ELSE
+    GREATEST(0, (
+      LEAST(COALESCE(e.ends_on, ($2::date + interval '1 month - 1 day')::date),
+            ($2::date + interval '1 month - 1 day')::date)
+      - GREATEST(e.starts_on, $2::date) + 1
+    ))::numeric
+    / EXTRACT(DAY FROM ($2::date + interval '1 month - 1 day'))
+  END`;
+
 // ================================================================ hisoblar
 export const invoicesRoutes = Router();
 invoicesRoutes.use(requireTenant, requireRole('admin', 'manager'));
@@ -41,21 +61,36 @@ invoicesRoutes.post(
       const dueDay = Number(settings.payment_due_day ?? 10);
       const dueDate = `${periodMonth}-${String(dueDay).padStart(2, '0')}`;
 
+      // Sozlama (3-qoida): oy ulushi hisoblansinmi.
+      const prorate = settings.prorate_partial_months === true;
+
       const inserted = await client.query(
-        `INSERT INTO invoices
+        `WITH calc AS (
+           SELECT e.school_id, e.academic_year_id, e.student_id, e.id AS enrollment_id,
+                  round(COALESCE(e.monthly_fee, c.monthly_fee) * (${PRORATE_FACTOR}), 2) AS amount,
+                  e.discount_percent
+             FROM enrollments e
+             JOIN classes c ON c.id = e.class_id
+             JOIN students s ON s.id = e.student_id
+            WHERE e.school_id = $1 AND e.academic_year_id = $4
+              AND e.starts_on <= ($2::date + interval '1 month - 1 day')::date
+              -- Proratsiya yoqilganda oy o'rtasida ketgan o'quvchi ham shu oy
+              -- uchun o'z ulushini oladi; o'chirilganda eski qat'iy shart.
+              AND CASE WHEN $5::boolean
+                    THEN (e.ends_on IS NULL OR e.ends_on >= $2::date)
+                         AND (s.status = 'active' OR e.ends_on IS NOT NULL)
+                    ELSE e.ends_on IS NULL AND s.status = 'active'
+                  END
+         )
+         INSERT INTO invoices
            (school_id, academic_year_id, student_id, enrollment_id, period_month, amount, discount, due_date)
-         SELECT e.school_id, e.academic_year_id, e.student_id, e.id, $2::date,
-                COALESCE(e.monthly_fee, c.monthly_fee),
-                round(COALESCE(e.monthly_fee, c.monthly_fee) * e.discount_percent / 100, 2),
-                $3::date
-           FROM enrollments e
-           JOIN classes c ON c.id = e.class_id
-           JOIN students s ON s.id = e.student_id
-          WHERE e.school_id = $1 AND e.academic_year_id = $4
-            AND e.ends_on IS NULL AND s.status = 'active'
+         SELECT school_id, academic_year_id, student_id, enrollment_id, $2::date,
+                amount, round(amount * discount_percent / 100, 2), $3::date
+           FROM calc
+          WHERE amount > 0
          ON CONFLICT (student_id, period_month) DO NOTHING
          RETURNING id`,
-        [req.schoolId, firstDay, dueDate, year.id],
+        [req.schoolId, firstDay, dueDate, year.id, prorate],
       );
 
       // Taqsimlanmagan puli bor HAR BIR o'quvchi bo'yicha qaytadan yuramiz —
@@ -293,23 +328,36 @@ async function ensureInvoice(
   const settings = await getSchoolSettings(schoolId, client);
   const dueDay = Number(settings.payment_due_day ?? 10);
   const dueDate = `${periodMonth}-${String(dueDay).padStart(2, '0')}`;
+  const prorate = settings.prorate_partial_months === true;
 
-  // Summa generate bilan bir xil manbadan: biriktirish narxi, bo'lmasa sinf narxi.
+  // Summa generate bilan bir xil manbadan: biriktirish narxi, bo'lmasa sinf
+  // narxi; oy ulushi ham xuddi shu formula bilan (PRORATE_FACTOR).
   const { rows } = await client.query<{ id: string }>(
-    `INSERT INTO invoices
+    `WITH calc AS (
+       SELECT e.school_id, e.academic_year_id, e.student_id, e.id AS enrollment_id,
+              round(COALESCE(e.monthly_fee, c.monthly_fee) * (${PRORATE_FACTOR}), 2) AS amount,
+              e.discount_percent
+         FROM enrollments e
+         JOIN classes c ON c.id = e.class_id
+        WHERE e.school_id = $1 AND e.student_id = $4 AND e.ends_on IS NULL
+     )
+     INSERT INTO invoices
        (school_id, academic_year_id, student_id, enrollment_id, period_month, amount, discount, due_date)
-     SELECT e.school_id, e.academic_year_id, e.student_id, e.id, $3::date,
-            COALESCE(e.monthly_fee, c.monthly_fee),
-            round(COALESCE(e.monthly_fee, c.monthly_fee) * e.discount_percent / 100, 2),
-            $4::date
-       FROM enrollments e
-       JOIN classes c ON c.id = e.class_id
-      WHERE e.school_id = $1 AND e.student_id = $2 AND e.ends_on IS NULL
+     SELECT school_id, academic_year_id, student_id, enrollment_id, $2::date,
+            amount, round(amount * discount_percent / 100, 2), $3::date
+       FROM calc
+      WHERE amount > 0
      RETURNING id`,
-    [schoolId, studentId, firstDay, dueDate],
+    [schoolId, firstDay, dueDate, studentId, prorate],
   );
   if (!rows[0]) {
-    throw badRequest("O'quvchi sinfga biriktirilmagan — oy uchun hisob chiqarib bo'lmaydi");
+    // Ikki sabab bo'lishi mumkin: sinfga biriktirilmagan yoki (oy ulushi
+    // yoqilganda) o'sha oyda umuman o'qimagan. Ikkalasini ham aytamiz —
+    // kassir nima qilishini bilishi kerak.
+    throw badRequest(
+      `${periodMonth} uchun hisob chiqarib bo'lmadi: o'quvchi sinfga ` +
+      `biriktirilmagan yoki o'sha oyda o'qimagan`,
+    );
   }
   return rows[0].id;
 }
@@ -448,15 +496,18 @@ paymentsRoutes.post(
         `Kvitansiya: ${payment.receipt_no}\n` +
         (left > 0 ? `Qolgan qarz: ${uz(left)}` : 'Qarz qolmadi.');
 
+      // Har bir ULANGAN RAQAMGA alohida xabar: bitta mas'ul shaxsning ikki
+      // raqami ikki xil chat, ikkalasi ham xabar olishi kerak.
       await client.query(
-        `INSERT INTO notifications (school_id, parent_id, student_id, kind, payload, body)
-         SELECT $1, p.id, $2, 'payment.received',
+        `INSERT INTO notifications (school_id, parent_id, parent_phone_id, student_id, kind, payload, body)
+         SELECT $1, p.id, pp.id, $2, 'payment.received',
                 jsonb_build_object('amount', $3::numeric, 'receipt', $4::text, 'outstanding', $5::numeric),
                 $6
            FROM student_parents sp
            JOIN parents p ON p.id = sp.parent_id
+           JOIN parent_phones pp ON pp.parent_id = p.id
           WHERE sp.student_id = $2 AND p.school_id = $1
-            AND p.notify_enabled AND p.telegram_chat_id IS NOT NULL`,
+            AND pp.notify_enabled AND pp.telegram_chat_id IS NOT NULL`,
         [req.schoolId, input.studentId, input.amount, payment.receipt_no, left, body],
       );
 

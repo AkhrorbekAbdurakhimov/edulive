@@ -1,39 +1,150 @@
 import type { Db } from '../../db/pool.js';
 import { normalizePhone, PHONE_HINT } from '../../utils/phone.js';
-import { badRequest } from '../../utils/errors.js';
+import { badRequest, conflict } from '../../utils/errors.js';
+
+/** Bitta odamga shuncha raqam biriktirish mumkin — cheksiz o'sib ketmasin. */
+export const MAX_PHONES = 5;
+
+export interface GuardianInput {
+  fullName: string;
+  /** Birinchisi asosiy hisoblanadi. Kamida bittasi bo'lishi shart. */
+  phones: string[];
+  // Importda qarindoshlik ko'rsatilmasligi mumkin — noto'g'ri taxmin qilgandan
+  // ko'ra bo'sh qoldirgan ma'qul (Telegram xabarlari shunga qarab yoziladi).
+  relation: string | null;
+}
 
 /**
- * Ota-onani telefon bo'yicha topadi yoki yaratadi va o'quvchiga bog'laydi.
+ * Raqamlarni yagona ko'rinishga keltiradi va takrorlarini olib tashlaydi.
  *
- * Telefon maktab ichida noyob (parents.UNIQUE(school_id, phone)) — bir oilaning
- * bir necha farzandi bo'lsa, ular bitta ota-ona yozuviga bog'lanadi.
+ * Normalizatsiya SHU YERDA: mas'ul shaxs yozuvi faqat shu modul orqali
+ * yaratiladi, ya'ni bironta yo'l uni chetlab o'tolmaydi. Telegram botga
+ * ulanish raqamni aynan solishtirishga tayanadi.
  */
-export async function linkParent(
+export function normalizePhones(raw: string[]): string[] {
+  const out: string[] = [];
+  for (const r of raw) {
+    if (!r?.trim()) continue;
+    const p = normalizePhone(r);
+    if (!p) throw badRequest(`Telefon raqam noto'g'ri: "${r}". ${PHONE_HINT}`);
+    if (!out.includes(p)) out.push(p);
+  }
+  if (!out.length) throw badRequest('Kamida bitta telefon raqam kerak');
+  if (out.length > MAX_PHONES) {
+    throw badRequest(`Bitta mas'ul shaxsga ${MAX_PHONES} tagacha raqam biriktiriladi`);
+  }
+  return out;
+}
+
+/**
+ * Mas'ul shaxsni raqami bo'yicha topadi yoki yaratadi va o'quvchiga bog'laydi.
+ *
+ * Raqam maktab ichida noyob: bir oilaning bir necha farzandi bo'lsa, ular
+ * bitta mas'ul shaxs yozuviga bog'lanadi. Shuning uchun avval berilgan
+ * raqamlarning birortasi allaqachon kimgadir tegishli emasmi — shuni qidiramiz.
+ */
+export async function linkGuardian(
   db: Db,
   schoolId: string,
   studentId: string,
-  // Importda qarindoshlik ko'rsatilmasligi mumkin — noto'g'ri taxmin qilgandan
-  // ko'ra bo'sh qoldirgan ma'qul (Telegram xabarlari shunga qarab yoziladi).
-  p: { fullName: string; phone: string; relation: string | null },
+  g: GuardianInput,
   isPrimary: boolean,
 ): Promise<string> {
-  // Raqam SHU YERDA yagona ko'rinishga keltiriladi: ota-ona yozuvi faqat shu
-  // funksiya orqali yaratiladi, ya'ni bironta yo'l uni chetlab o'tolmaydi.
-  // Bu muhim — Telegram botga ulanish raqamni aynan solishtirishga tayanadi.
-  const phone = normalizePhone(p.phone);
-  if (!phone) throw badRequest(`Telefon raqam noto'g'ri. ${PHONE_HINT}`);
+  const phones = normalizePhones(g.phones);
 
-  const { rows } = await db.query<{ id: string }>(
-    `INSERT INTO parents (school_id, full_name, phone, relation)
-     VALUES ($1,$2,$3,$4)
-     ON CONFLICT (school_id, phone) DO UPDATE SET full_name = EXCLUDED.full_name
-     RETURNING id`,
-    [schoolId, p.fullName, phone, p.relation],
+  // Raqamlardan birortasi bazada bo'lsa — bu o'sha odam.
+  const { rows: existing } = await db.query<{ parent_id: string }>(
+    `SELECT DISTINCT parent_id FROM parent_phones
+      WHERE school_id = $1 AND phone = ANY($2::text[])`,
+    [schoolId, phones],
   );
+  if (existing.length > 1) {
+    throw conflict(
+      "Bu raqamlar turli mas'ul shaxslarga tegishli. Avval eskilarini tekshiring",
+    );
+  }
+
+  let parentId = existing[0]?.parent_id;
+  if (parentId) {
+    await db.query(
+      `UPDATE parents SET full_name = $2, relation = COALESCE($3, relation)
+        WHERE id = $1 AND school_id = $4`,
+      [parentId, g.fullName, g.relation, schoolId],
+    );
+  } else {
+    const { rows } = await db.query<{ id: string }>(
+      `INSERT INTO parents (school_id, full_name, relation) VALUES ($1,$2,$3) RETURNING id`,
+      [schoolId, g.fullName, g.relation],
+    );
+    parentId = rows[0].id;
+  }
+
+  await addPhones(db, schoolId, parentId, phones);
+
   await db.query(
     `INSERT INTO student_parents (student_id, parent_id, is_primary)
      VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-    [studentId, rows[0].id, isPrimary],
+    [studentId, parentId, isPrimary],
   );
-  return rows[0].id;
+  return parentId;
+}
+
+/**
+ * Raqamlarni qo'shadi. Boshqa odamga tegishli raqam bo'lsa xato beradi —
+ * jimgina o'tkazib yuborsak, xabar noto'g'ri odamga ketardi.
+ */
+export async function addPhones(
+  db: Db,
+  schoolId: string,
+  parentId: string,
+  phones: string[],
+): Promise<void> {
+  const { rows: taken } = await db.query<{ phone: string }>(
+    `SELECT phone FROM parent_phones
+      WHERE school_id = $1 AND phone = ANY($2::text[]) AND parent_id <> $3`,
+    [schoolId, phones, parentId],
+  );
+  if (taken.length) {
+    throw conflict(`Bu raqam boshqa mas'ul shaxsga biriktirilgan: ${taken[0].phone}`);
+  }
+
+  const { rows: current } = await db.query<{ c: number }>(
+    `SELECT count(*)::int AS c FROM parent_phones WHERE parent_id = $1 AND school_id = $2`,
+    [parentId, schoolId]);
+  if (current[0].c + phones.length > MAX_PHONES) {
+    throw badRequest(`Bitta mas'ul shaxsga ${MAX_PHONES} tagacha raqam biriktiriladi`);
+  }
+
+  for (const [i, phone] of phones.entries()) {
+    await db.query(
+      `INSERT INTO parent_phones (school_id, parent_id, phone, is_primary)
+       VALUES ($1,$2,$3, $4 AND NOT EXISTS (
+         SELECT 1 FROM parent_phones WHERE parent_id = $2 AND is_primary
+       ))
+       ON CONFLICT (school_id, phone) DO NOTHING`,
+      [schoolId, parentId, phone, i === 0],
+    );
+  }
+}
+
+/** O'quvchining mas'ul shaxslari — raqamlari bilan birga. */
+export async function guardiansOf(db: Db, schoolId: string, studentId: string) {
+  const { rows } = await db.query(
+    `SELECT p.id, p.full_name, p.relation, sp.is_primary,
+            COALESCE(ph.phones, '[]'::json) AS phones
+       FROM student_parents sp
+       JOIN parents p ON p.id = sp.parent_id AND p.school_id = $1
+       LEFT JOIN LATERAL (
+         SELECT json_agg(json_build_object(
+                  'id', pp.id, 'phone', pp.phone, 'isPrimary', pp.is_primary,
+                  'telegramLinked', pp.telegram_chat_id IS NOT NULL,
+                  'notifyEnabled', pp.notify_enabled
+                ) ORDER BY pp.is_primary DESC, pp.created_at) AS phones
+           FROM parent_phones pp WHERE pp.parent_id = p.id
+       ) ph ON true
+      WHERE sp.student_id = $2
+      ORDER BY sp.is_primary DESC, p.full_name`,
+    [schoolId, studentId],
+  );
+  return rows;
 }

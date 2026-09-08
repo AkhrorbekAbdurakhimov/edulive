@@ -15,6 +15,9 @@ interface StudentRow {
 }
 interface ClassRow { id: string; name: string; student_count: number }
 
+interface GuardianDraft { fullName: string; phone: string; extra: string; relation: string }
+const blankGuardian = (): GuardianDraft => ({ fullName: '', phone: '+998', extra: '', relation: 'father' });
+
 export default function Students() {
   const [q, setQ] = useState('');
   const [classId, setClassId] = useState('');
@@ -139,9 +142,12 @@ export default function Students() {
 function CreateStudentModal({ classes, onClose }: { classes: ClassRow[]; onClose: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
-    lastName: '', firstName: '', middleName: '', birthDate: '', gender: '',
-    classId: '', parentName: '', parentPhone: '+998', relation: 'father',
+    lastName: '', firstName: '', middleName: '', birthDate: '', gender: '', classId: '',
   });
+  // Bir o'quvchida bir nechta mas'ul shaxs, har birida qo'shimcha raqam bo'lishi mumkin.
+  const [guardians, setGuardians] = useState<GuardianDraft[]>([blankGuardian()]);
+  const setG = (i: number, k: keyof GuardianDraft) => (e: { target: { value: string } }) =>
+    setGuardians((gs) => gs.map((g, j) => (j === i ? { ...g, [k]: e.target.value } : g)));
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -157,8 +163,14 @@ function CreateStudentModal({ classes, onClose }: { classes: ClassRow[]; onClose
       if (form.middleName.trim()) body.middleName = form.middleName.trim();
       if (form.birthDate) body.birthDate = form.birthDate;
       if (form.gender) body.gender = form.gender;
-      if (form.parentName.trim()) {
-        body.parent = { fullName: form.parentName.trim(), phone: form.parentPhone.trim(), relation: form.relation };
+      // Faqat ismi yozilganlari yuboriladi; bo'sh bloklar e'tiborga olinmaydi.
+      const filled = guardians.filter((g) => g.fullName.trim() && g.phone.trim());
+      if (filled.length) {
+        body.guardians = filled.map((g) => ({
+          fullName: g.fullName.trim(),
+          phones: [g.phone.trim(), ...(g.extra.trim() ? [g.extra.trim()] : [])],
+          relation: g.relation,
+        }));
       }
       return (await api.post('/students', body)).data;
     },
@@ -206,27 +218,55 @@ function CreateStudentModal({ classes, onClose }: { classes: ClassRow[]; onClose
               {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <div className="field">
-            <label>Ota-ona (ixtiyoriy)</label>
-            <input className="input" value={form.parentName} onChange={set('parentName')} placeholder="F.I.Sh" />
-          </div>
-          {form.parentName.trim() && (
-            <>
+        </div>
+
+        <h3 className="form-sub">Mas'ul shaxslar <span className="muted">(ixtiyoriy)</span></h3>
+        {guardians.map((g, i) => (
+          <div key={i} className="guardian-draft">
+            <div className="form-grid">
               <div className="field">
-                <label>Ota-ona telefoni</label>
-                <input className="input" value={form.parentPhone} onChange={set('parentPhone')} inputMode="tel" />
+                <label>F.I.Sh</label>
+                <input className="input" value={g.fullName} onChange={setG(i, 'fullName')} placeholder="F.I.Sh" />
               </div>
               <div className="field">
                 <label>Kim bo'ladi</label>
-                <select className="input" value={form.relation} onChange={set('relation')}>
+                <select className="input" value={g.relation} onChange={setG(i, 'relation')}>
                   <option value="father">Otasi</option>
                   <option value="mother">Onasi</option>
                   <option value="guardian">Vasiy</option>
                 </select>
               </div>
-            </>
-          )}
-        </div>
+              <div className="field">
+                <label>Telefon</label>
+                <input className="input num" value={g.phone} onChange={setG(i, 'phone')} inputMode="tel" />
+              </div>
+              <div className="field">
+                <label>Qo'shimcha telefon</label>
+                <input className="input num" value={g.extra} onChange={setG(i, 'extra')}
+                       inputMode="tel" placeholder="ixtiyoriy" />
+              </div>
+            </div>
+            {guardians.length > 1 && (
+              <button
+                type="button" className="btn btn-ghost sm"
+                onClick={() => setGuardians((gs) => gs.filter((_, j) => j !== i))}
+              >
+                Olib tashlash
+              </button>
+            )}
+          </div>
+        ))}
+        {guardians.length < 4 && (
+          <button
+            type="button" className="btn btn-secondary sm"
+            onClick={() => setGuardians((gs) => [...gs, blankGuardian()])}
+          >
+            + Yana mas'ul shaxs
+          </button>
+        )}
+        <p className="help" style={{ marginTop: 6 }}>
+          Har bir raqam alohida Telegram botga ulanadi va xabar oladi.
+        </p>
         {errMsg && <p className="hint" style={{ marginTop: 10 }}>{errMsg}</p>}
         <div className="actions">
           <button type="button" className="btn btn-secondary" onClick={onClose}>Bekor qilish</button>
@@ -313,7 +353,8 @@ function ImportModal({ onClose }: { onClose: () => void }) {
           <p className="muted">
             Telefonni <strong>+</strong> siz yozsangiz ham bo'ladi — Excel <strong>+</strong> bilan
             boshlangan katakni formula deb qabul qiladi. <span className="num">998901234567</span> ham,
-            <span className="num"> 901234567</span> ham to'g'ri.
+            <span className="num"> 901234567</span> ham to'g'ri. Shablonda <strong>ikkita
+            mas'ul shaxs</strong> uchun joy bor, har birida qo'shimcha telefon ustuni ham.
           </p>
         </li>
         <li>

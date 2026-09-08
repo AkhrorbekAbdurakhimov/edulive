@@ -64,8 +64,9 @@ debtorsRoutes.get(
          LEFT JOIN enrollments e ON e.student_id = s.id AND e.ends_on IS NULL
          LEFT JOIN classes c ON c.id = e.class_id
          LEFT JOIN LATERAL (
-           SELECT pr.full_name, pr.phone FROM student_parents sp
+           SELECT pr.full_name, pp.phone FROM student_parents sp
              JOIN parents pr ON pr.id = sp.parent_id AND pr.school_id = $1
+             LEFT JOIN parent_phones pp ON pp.parent_id = pr.id AND pp.is_primary
             WHERE sp.student_id = s.id
             ORDER BY sp.is_primary DESC LIMIT 1
          ) p ON true
@@ -117,16 +118,17 @@ debtorsRoutes.post(
       `Iltimos, to'lovni amalga oshiring.`;
 
     const { rowCount } = await pool.query(
-      `INSERT INTO notifications (school_id, parent_id, student_id, kind, payload, body)
-       SELECT $1, p.id, $2, 'debt.reminder',
+      `INSERT INTO notifications (school_id, parent_id, parent_phone_id, student_id, kind, payload, body)
+       SELECT $1, p.id, pp.id, $2, 'debt.reminder',
               jsonb_build_object('outstanding', $3::numeric), $4
          FROM student_parents sp
          JOIN parents p ON p.id = sp.parent_id
+         JOIN parent_phones pp ON pp.parent_id = p.id
         WHERE sp.student_id = $2 AND p.school_id = $1
-          AND p.notify_enabled AND p.telegram_chat_id IS NOT NULL
+          AND pp.notify_enabled AND pp.telegram_chat_id IS NOT NULL
           AND NOT EXISTS (
             SELECT 1 FROM notifications n
-             WHERE n.parent_id = p.id AND n.student_id = $2
+             WHERE n.parent_phone_id = pp.id AND n.student_id = $2
                AND n.kind = 'debt.reminder'
                AND n.created_at > now() - interval '1 day'
           )`,

@@ -184,8 +184,8 @@ attendanceRoutes.post(
       // Kelmagan/kechikkanlarning ota-onalariga bildirishnoma navbatga qo'yiladi.
       // Yagona engine (A4): kanal — parametr, yuborishni worker bajaradi.
       const queued = await client.query(
-        `INSERT INTO notifications (school_id, parent_id, student_id, kind, payload, body)
-         SELECT $1, p.id, a.student_id,
+        `INSERT INTO notifications (school_id, parent_id, parent_phone_id, student_id, kind, payload, body)
+         SELECT $1, p.id, pp.id, a.student_id,
                 'attendance.' || a.status,
                 jsonb_build_object('date', a.on_date, 'status', a.status, 'minutesLate', a.minutes_late),
                 s.first_name || CASE a.status
@@ -195,7 +195,11 @@ attendanceRoutes.post(
            FROM attendance a
            JOIN students s ON s.id = a.student_id
            JOIN student_parents sp ON sp.student_id = a.student_id
-           JOIN parents p ON p.id = sp.parent_id AND p.notify_enabled AND p.school_id = $1
+           JOIN parents p ON p.id = sp.parent_id AND p.school_id = $1
+           -- Har bir ULANGAN raqamga alohida: bitta odamning ikki raqami
+           -- ikki xil chat, ikkalasi ham xabar olishi kerak.
+           JOIN parent_phones pp ON pp.parent_id = p.id
+                AND pp.notify_enabled AND pp.telegram_chat_id IS NOT NULL
           WHERE a.session_id = $2 AND a.school_id = $1 AND a.status <> 'present'
          RETURNING id`,
         [req.schoolId, sessionId],

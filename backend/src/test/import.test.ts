@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import ExcelJS from 'exceljs';
+import { COLUMNS } from '../modules/students/students.import.js';
 import { pool } from '../db/pool.js';
 import {
   createTestSchool,
@@ -49,13 +50,36 @@ async function upload(buf: Buffer, token: string, filename = 'oquvchilar.xlsx') 
 }
 
 /** Berilgan qatorlardan xlsx yasaydi (sarlavha qatori bilan). */
+/**
+ * Qatorni NOM bo'yicha yasaydi.
+ *
+ * Pozitsion massiv ishlatilsa, shablonga ustun qo'shilishi bilan hamma
+ * testni qayta yozish kerak bo'lardi — bir marta shunday bo'lgan ham.
+ */
+interface RowSpec {
+  last?: string | null; first?: string | null; middle?: string | null;
+  birth?: string | null; gender?: string | null; cls?: string | null;
+  discount?: number | null;
+  g1?: string | null; g1phone?: string | number | null; g1extra?: string | number | null; g1rel?: string | null;
+  g2?: string | null; g2phone?: string | number | null; g2extra?: string | number | null; g2rel?: string | null;
+  ext?: string | null;
+}
+
+function row(s: RowSpec): Array<string | number | null> {
+  return [
+    s.last ?? null, s.first ?? null, s.middle ?? null, s.birth ?? null,
+    s.gender ?? null, s.cls ?? null, s.discount ?? 0,
+    s.g1 ?? null, s.g1phone ?? null, s.g1extra ?? null, s.g1rel ?? null,
+    s.g2 ?? null, s.g2phone ?? null, s.g2extra ?? null, s.g2rel ?? null,
+    s.ext ?? null,
+  ];
+}
+
 async function sheetOf(rows: Array<Array<string | number | null>>): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Oquvchilar');
-  ws.addRow([
-    'Familiya', 'Ism', 'Otasining ismi', "Tug'ilgan sana", 'Jinsi', 'Sinf',
-    'Chegirma %', 'Ota-ona F.I.Sh', 'Ota-ona telefoni', "Kim bo'ladi", 'Maktab ID',
-  ]);
+  // Sarlavha modul ta'rifidan olinadi — test va shablon bir-biridan ajralmasin.
+  ws.addRow(COLUMNS.map((c) => c.header));
   rows.forEach((r) => ws.addRow(r));
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
@@ -83,8 +107,10 @@ test('shablon yuklab olinadi va sinflar ro\'yxati ichida bo\'ladi', async () => 
 
 test('to\'g\'ri fayl: o\'quvchi, sinf va ota-ona yoziladi', async () => {
   const buf = await sheetOf([
-    ['Yusupova', 'Madina', 'Anvar', '2018-03-05', 'qiz', className, 0, 'Yusupov Anvar', '+998901110011', 'ota', 'IMP-1'],
-    ['Karimov', 'Alibek', null, null, "o'g'il", className, 25, 'Yusupov Anvar', '+998901110011', 'ota', 'IMP-2'],
+    row({ last: 'Yusupova', first: 'Madina', middle: 'Anvar', birth: '2018-03-05', gender: 'qiz',
+          cls: className, g1: 'Yusupov Anvar', g1phone: '+998901110011', g1rel: 'ota', ext: 'IMP-1' }),
+    row({ last: 'Karimov', first: 'Alibek', gender: "o'g'il", cls: className, discount: 25,
+          g1: 'Yusupov Anvar', g1phone: '+998901110011', g1rel: 'ota', ext: 'IMP-2' }),
   ]);
   const res = await upload(buf, school.adminToken);
   assert.equal(res.status, 201, JSON.stringify(res.body));
@@ -97,12 +123,17 @@ test('to\'g\'ri fayl: o\'quvchi, sinf va ota-ona yoziladi', async () => {
 
   const card = await api('GET', `/students/${madina.id}`, undefined, school.adminToken);
   assert.equal(card.body.parents.length, 1);
-  assert.equal(card.body.parents[0].phone, '+998901110011');
+  // Raqamlar endi ro'yxat: bitta odamda bir nechta bo'lishi mumkin.
+  assert.deepEqual(
+    card.body.parents[0].phones.map((x: { phone: string }) => x.phone),
+    ['+998901110011'],
+  );
   assert.equal(card.body.student.gender, 'f');
 
-  // Aka-uka bitta ota-onaga bog'lanadi (parents.UNIQUE(school_id, phone))
+  // Aka-uka bitta mas'ul shaxsga bog'lanadi (parent_phones.UNIQUE(school_id, phone))
   const parents = await pool.query(
-    `SELECT count(*)::int AS n FROM parents WHERE school_id = $1 AND phone = '+998901110011'`,
+    `SELECT count(DISTINCT parent_id)::int AS n FROM parent_phones
+      WHERE school_id = $1 AND phone = '+998901110011'`,
     [school.schoolId],
   );
   assert.equal(parents.rows[0].n, 1, 'bir xil telefonli ota-ona ikki marta yaratilmasligi kerak');
@@ -119,12 +150,12 @@ test('xato bo\'lsa HECH NARSA yozilmaydi va qator raqami ko\'rsatiladi', async (
   const before = await api('GET', '/students?limit=200', undefined, school.adminToken);
 
   const buf = await sheetOf([
-    ['Toshmatov', 'Bobur', null, null, null, className, 0, null, null, null, 'IMP-9'],  // to'g'ri
-    ['X', 'Sardor', null, null, null, className, 0, null, null, null, null],            // familiya qisqa
-    ['Ergashev', 'Aziz', null, '05.06.2019', null, className, 0, null, null, null, null], // sana formati
-    ['Nazarov', 'Umar', null, null, null, 'YO\'Q-SINF', 0, null, null, null, null],      // sinf topilmaydi
-    ['Islomov', 'Bilol', null, null, null, className, 150, null, null, null, null],      // chegirma
-    ['Saidov', 'Imron', null, null, null, className, 0, 'Saidov Ota', '12-34', 'ota', null],      // telefon
+    row({ last: 'Toshmatov', first: 'Bobur', cls: className, ext: 'IMP-9' }),           // to'g'ri
+    row({ last: 'X', first: 'Sardor', cls: className }),                                // familiya qisqa
+    row({ last: 'Ergashev', first: 'Aziz', birth: '05.06.2019', cls: className }),       // sana formati
+    row({ last: 'Nazarov', first: 'Umar', cls: "YO'Q-SINF" }),                           // sinf topilmaydi
+    row({ last: 'Islomov', first: 'Bilol', cls: className, discount: 150 }),             // chegirma
+    row({ last: 'Saidov', first: 'Imron', cls: className, g1: 'Saidov Ota', g1phone: '12-34', g1rel: 'ota' }), // telefon
   ]);
   const res = await upload(buf, school.adminToken);
   assert.equal(res.status, 400);
@@ -135,7 +166,7 @@ test('xato bo\'lsa HECH NARSA yozilmaydi va qator raqami ko\'rsatiladi', async (
   assert.ok(cols.includes("Tug'ilgan sana"));
   assert.ok(cols.includes('Sinf'));
   assert.ok(cols.includes('Chegirma %'));
-  assert.ok(cols.includes('Ota-ona telefoni'));
+  assert.ok(cols.includes("1-mas'ul telefoni"), JSON.stringify(cols));
   // Qator raqamlari Excel bo'yicha (sarlavha 1-qator)
   assert.equal(res.body.errors[0].row, 3);
 
@@ -145,8 +176,8 @@ test('xato bo\'lsa HECH NARSA yozilmaydi va qator raqami ko\'rsatiladi', async (
 
 test('takroriy Maktab ID: fayl ichida ham, bazada ham ushlanadi', async () => {
   const inFile = await sheetOf([
-    ['Aliyev', 'Botir', null, null, null, null, 0, null, null, null, 'DUP-1'],
-    ['Valiyev', 'Sanjar', null, null, null, null, 0, null, null, null, 'DUP-1'],
+    row({ last: 'Aliyev', first: 'Botir', ext: 'DUP-1' }),
+    row({ last: 'Valiyev', first: 'Sanjar', ext: 'DUP-1' }),
   ]);
   const r1 = await upload(inFile, school.adminToken);
   assert.equal(r1.status, 400);
@@ -154,7 +185,7 @@ test('takroriy Maktab ID: fayl ichida ham, bazada ham ushlanadi', async () => {
 
   // Bazadagi bilan to'qnashuv (IMP-1 avvalgi testda yaratilgan)
   const inDb = await sheetOf([
-    ['Aliyev', 'Botir', null, null, null, null, 0, null, null, null, 'IMP-1'],
+    row({ last: 'Aliyev', first: 'Botir', ext: 'IMP-1' }),
   ]);
   const r2 = await upload(inDb, school.adminToken);
   assert.equal(r2.status, 400);
@@ -190,17 +221,19 @@ test("telefon '+' siz ham qabul qilinadi va yagona ko'rinishda saqlanadi", async
   // Excelda "+" bilan boshlangan katak formula deb qabul qilinadi — shuning
   // uchun maktablar raqamni "+" siz yozadi. Hamma ko'rinish bir xil saqlansin.
   const buf = await sheetOf([
-    ['Telefonov', 'Birinchi', '', '', '', className, 0, 'Ota Bir', '998901110001', 'ota', ''],
-    ['Telefonov', 'Ikkinchi', '', '', '', className, 0, 'Ota Ikki', '901110002', 'ota', ''],
-    ['Telefonov', 'Uchinchi', '', '', '', className, 0, 'Ota Uch', '+998 90 111 00 03', 'ota', ''],
-    ['Telefonov', "To'rtinchi", '', '', '', className, 0, "Ota To'rt", '(90) 111-00-04', 'ota', ''],
+    row({ last: 'Telefonov', first: 'Birinchi', cls: className, g1: 'Ota Bir', g1phone: '998901110001', g1rel: 'ota' }),
+    row({ last: 'Telefonov', first: 'Ikkinchi', cls: className, g1: 'Ota Ikki', g1phone: '901110002', g1rel: 'ota' }),
+    row({ last: 'Telefonov', first: 'Uchinchi', cls: className, g1: 'Ota Uch', g1phone: '+998 90 111 00 03', g1rel: 'ota' }),
+    row({ last: 'Telefonov', first: "To'rtinchi", cls: className, g1: "Ota To'rt", g1phone: '(90) 111-00-04', g1rel: 'ota' }),
   ]);
   const res = await upload(buf, school.adminToken);
   assert.equal(res.status, 201, JSON.stringify(res.body));
   assert.equal(res.body.parents, 4);
 
   const { rows } = await pool.query<{ phone: string }>(
-    `SELECT phone FROM parents WHERE school_id = $1 AND full_name LIKE 'Ota %' ORDER BY phone`,
+    `SELECT pp.phone FROM parent_phones pp
+       JOIN parents p ON p.id = pp.parent_id
+      WHERE pp.school_id = $1 AND p.full_name LIKE 'Ota %' ORDER BY pp.phone`,
     [school.schoolId],
   );
   assert.deepEqual(rows.map((r) => r.phone), [
@@ -210,10 +243,50 @@ test("telefon '+' siz ham qabul qilinadi va yagona ko'rinishda saqlanadi", async
 
 test("yaroqsiz raqam tushunarli xato beradi", async () => {
   const buf = await sheetOf([
-    ['Telefonov', 'Xato', '', '', '', className, 0, 'Ota Xato', '12345', 'ota', ''],
+    row({ last: 'Telefonov', first: 'Xato', cls: className, g1: 'Ota Xato', g1phone: '12345', g1rel: 'ota' }),
   ]);
   const res = await upload(buf, school.adminToken);
   assert.equal(res.status, 400);
-  assert.equal(res.body.errors[0].column, 'Ota-ona telefoni');
+  assert.equal(res.body.errors[0].column, "1-mas'ul telefoni");
   assert.match(res.body.errors[0].message, /901234567/, res.body.errors[0].message);
+});
+
+test("import ikkita mas'ul shaxs va qo'shimcha raqamlarni oladi", async () => {
+  const buf = await sheetOf([
+    row({
+      last: 'Ikkilamchi', first: 'Nodir', cls: className,
+      g1: 'Nodirov Ota', g1phone: 998901112221, g1extra: 998971112221, g1rel: 'ota',
+      g2: 'Nodirova Ona', g2phone: 901112222, g2rel: 'ona',
+    }),
+  ]);
+  const res = await upload(buf, school.adminToken);
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  assert.equal(res.body.parents, 2, 'ikkala mas\'ul shaxs ham yozilishi kerak');
+
+  const list = await api('GET', '/students?q=Ikkilamchi', undefined, school.adminToken);
+  const card = await api('GET', `/students/${list.body.items[0].id}`, undefined, school.adminToken);
+  assert.equal(card.body.parents.length, 2);
+
+  const father = card.body.parents.find((p: any) => p.relation === 'father');
+  assert.deepEqual(
+    father.phones.map((x: any) => x.phone).sort(),
+    ['+998901112221', '+998971112221'],
+    "qo'shimcha raqam ham olinishi kerak",
+  );
+  const mother = card.body.parents.find((p: any) => p.relation === 'mother');
+  assert.equal(mother.phones.length, 1);
+});
+
+test("ikkala mas'ulda bir xil raqam bo'lsa xato beriladi", async () => {
+  // Jimgina birlashtirilsa "kim bo'ladi" chalkashardi.
+  const buf = await sheetOf([
+    row({
+      last: 'Takror', first: 'Raqam', cls: className,
+      g1: 'Birinchi Ota', g1phone: '901113331', g1rel: 'ota',
+      g2: 'Ikkinchi Ona', g2phone: '901113331', g2rel: 'ona',
+    }),
+  ]);
+  const res = await upload(buf, school.adminToken);
+  assert.equal(res.status, 400, JSON.stringify(res.body));
+  assert.match(res.body.errors[0].message, /1-mas'ul shaxsda ham bor/);
 });
