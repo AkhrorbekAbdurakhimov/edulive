@@ -1,17 +1,21 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { isOffline } from '../api';
+import { isOffline, perms, type AuthedUser } from '../api';
 import { initials, monthRange, rosterName } from '../format';
 import { useRoster, useSummary, type ClassItem } from '../queries';
 import { HIT, useTheme } from '../theme';
 import { AppBar, Avatar, BigButton, EmptyState, ErrorState, Icon, Pill, Skeleton, ThumbZone } from '../ui';
+import { IconButton } from '../forms';
+import { ClassSheet } from './ClassForms';
 
 /**
  * Sinf kartasi: o'quvchilar ro'yxati + tanlangan oy bo'yicha davomat yig'masi.
  * Bosh barmoq zonasida — bugungi davomatga o'tish.
  */
-export function ClassDetailScreen({ cls, onBack, onTakeAttendance }: { cls: ClassItem; onBack: () => void; onTakeAttendance: () => void }) {
+export function ClassDetailScreen({ cls, user, onBack, onTakeAttendance }: { cls: ClassItem; user: AuthedUser; onBack: () => void; onTakeAttendance: () => void }) {
   const c = useTheme();
+  const canEdit = perms(user).admin;
+  const [editOpen, setEditOpen] = useState(false);
   const [offset, setOffset] = useState(0);
   const range = monthRange(offset);
 
@@ -31,6 +35,7 @@ export function ClassDetailScreen({ cls, onBack, onTakeAttendance }: { cls: Clas
         title={`${cls.name} sinf`}
         meta={`${cls.student_count} o'quvchi${cls.homeroom_teacher ? ` · Rahbar: ${cls.homeroom_teacher}` : ''}`}
         onBack={onBack}
+        right={canEdit ? <IconButton name="edit-2" label="Sinfni tahrirlash" onPress={() => setEditOpen(true)} /> : undefined}
       />
 
       {/* Oy tanlash + yig'ma */}
@@ -92,6 +97,7 @@ export function ClassDetailScreen({ cls, onBack, onTakeAttendance }: { cls: Clas
       <ThumbZone>
         <BigButton title="Bugungi davomat" icon="check-square" onPress={onTakeAttendance} />
       </ThumbZone>
+      {canEdit && <ClassSheet key={cls.id} cls={cls} open={editOpen} onClose={() => setEditOpen(false)} onDeleted={onBack} />}
     </View>
   );
 }

@@ -49,6 +49,7 @@ maket va mavjud API mantiqi to'qnashgan joylarda **mantiq ustun** qo'yildi:
 | M9 | "Faqat o'qituvchi uchun" (DESIGN_PROMPT §6) | Admin, menejer va o'qituvchi kiradi; **superadmin faqat web** | Maktab admini ham koridorda davomat oladi/tekshiradi. Superadmin — platforma egasi, maktab ichki ishiga aralashmaydi (`platformReadOnly`). Backend allaqachon admin/menejerga davomat huquqi bergan; admin hamma sinfni ko'radi. |
 
 | M10 | — | Ilova o'zini yangilaydi: GitHub Release'dan yangi `versionCode` ni ko'rsa APK'ni yuklab, tizim o'rnatuvchisini ochadi | Play Market'da emas; o'qituvchidan APK qidirib qo'lda o'rnatishni talab qilib bo'lmaydi. EAS Update (OTA) hisob talab qiladi va native o'zgarishni qamramaydi. Repo ochiq — Release API tokensiz. Bir xil keystore → ustiga o'rnatiladi, ma'lumot saqlanadi. |
+| M11 | Faqat davomat (o'qituvchi ilovasi) | Web'dagi barcha bo'limlar: Boshqaruv, Sinflar, O'quvchilar (+karta), To'lovlar, Qarzdorlar, Xabarlar, Kutubxona, Xodimlar, Profil — rolga qarab | Admin va menejer telefondan ham ishlaydi (M9); web'da davomat vaqtincha yopilgan, telefon esa davomatni ham, boshqa bo'limlarni ham beradi. Pastki panel tartibi web `MOBILE_ORDER` bilan bir xil (Boshqaruv · To'lovlar · Kutubxona · Yana). Excel import faqat web'da qoldi — fayl tanlash telefon ishi emas. Sana kiritish KK.OO.YYYY matn maydoni bilan (native date picker qo'shilmadi — yana bir native modul, build xavfi). |
 
 Maketning 5-ekrani (haftalik baho) 2-bosqichda `grades` moduli bilan birga qilinadi.
 

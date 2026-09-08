@@ -19,18 +19,26 @@ Seed hisoblar: o'qituvchi `+998901112244 / teacher123`, admin `+998901112233 / a
 Backend va web bilan bir xil til (TypeScript) va bir xil tiplar. Tokenlar
 `src/theme.ts` da — web'dagi `tokens.css` bilan **bir xil qiymatlar**.
 
-## Ekranlar (maket: `../development/mobile-ui.dc.html`)
+## Bo'limlar (web bilan bir xil, rolga qarab — DECISIONS M11)
 
-| Tab / ekran | Fayl | Maketdagi raqam |
+| Bo'lim | Kim ko'radi | Fayl |
 |---|---|---|
-| Kirish | `screens/LoginScreen.tsx` | — |
-| Bugun — sinflar + bugungi davomat holati, KPI, navbat kartalari | `screens/HomeScreen.tsx` | 1, 6 |
-| Davomat olish → tasdiqlash oynasi → natija | `screens/AttendanceScreen.tsx` | 2, 3, 4, 6 |
-| Sinflar → sinf kartasi (oylik davomat yig'masi) | `screens/ClassesScreen.tsx`, `ClassDetailScreen.tsx` | — |
-| Profil — parol, navbat, chiqish | `screens/ProfileScreen.tsx` | — |
+| Boshqaruv (KPI plitkalar) | admin, menejer | `screens/DashboardScreen.tsx` |
+| Davomat (Bugun → davomat olish → tasdiqlash) | hamma | `screens/HomeScreen.tsx`, `AttendanceScreen.tsx` |
+| Sinflar → sinf kartasi (oylik yig'ma); admin: sinf/o'quv yili | hamma | `screens/ClassesScreen.tsx`, `ClassDetailScreen.tsx`, `ClassForms.tsx` |
+| O'quvchilar → karta (moliya, hisoblar, ota-ona, kitoblar, tahrir, arxiv) | admin, menejer | `screens/StudentsScreen.tsx`, `StudentCardScreen.tsx`, `StudentForms.tsx` |
+| To'lovlar (qabul qilish, oylar, kvitansiya, hisob chiqarish) | admin, menejer | `screens/PaymentsScreen.tsx` |
+| Qarzdorlar (+eslatma) | admin, menejer | `screens/DebtorsScreen.tsx` |
+| Xabarlar (bot havolasini ulashish, qayta yuborish) | admin, menejer | `screens/NotificationsScreen.tsx` |
+| Kutubxona (kitoblar, berish, qabul qilish, kitob kartasi) | admin, menejer, kutubxonachi | `screens/LibraryScreen.tsx`, `BookDetailScreen.tsx`, `LibraryForms.tsx` |
+| Xodimlar (admin tahrirlaydi, menejer ko'radi) | admin, menejer | `screens/UsersScreen.tsx` |
+| Profil (ism/telefon, parol, chiqish) | hamma | `screens/ProfileScreen.tsx` |
 
-Maketdan farqlar (backend mantiqiga moslab) — `development/DECISIONS.md`
-"Android" bo'limida.
+Pastki panel: 3 bo'lim + "Yana" varaqasi (`App.tsx` → `navFor`). Umumiy forma
+qismlari (`SearchPicker`, `Select`, `FormSheet`, `MoneyField`, `Chips`) —
+`src/forms.tsx`. Excel import faqat web'da.
+
+Maket: `../development/mobile-ui.dc.html` (davomat ekranlari 1–4, 6).
 
 ## Tuzilish
 

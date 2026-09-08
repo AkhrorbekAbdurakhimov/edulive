@@ -83,3 +83,52 @@ export function fmtPhone(p: string | null | undefined): string {
   const m = p.match(/^\+998(\d{2})(\d{3})(\d{2})(\d{2})$/);
   return m ? `+998 ${m[1]} ${m[2]} ${m[3]} ${m[4]}` : p;
 }
+
+// ---------------------------------------------------------------- pul
+/** 1 200 000 so'm — bo'sh joy ajratgich, valyuta oxirida (web `money()` bilan bir xil). */
+export const money = (n: number | null | undefined): string =>
+  `${fmtNum(String(Math.round(Number(n ?? 0))))} so'm`;
+
+/** Summa maydoni uchun: "2000000" → "2 000 000". Raqamdan boshqasi tashlanadi. */
+export const fmtNum = (v: string): string =>
+  v.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+/** fmtNum ning teskarisi: "2 000 000" → 2000000 */
+export const parseAmount = (v: string): number => Number(v.replace(/\s/g, '')) || 0;
+
+/** "2026-09" yoki "2026-09-01" → "Sentabr 2026" */
+export function monthLabel(d: string): string {
+  const [y, m] = d.split('-');
+  return `${MONTHS[Number(m) - 1] ?? m} ${y}`;
+}
+
+// ---------------------------------------------------------------- sana kiritish
+/** "09.08.2026" → "2026-08-09"; noto'g'ri bo'lsa null. Telefon klaviaturasida sana shu tartibda yoziladi. */
+export function parseUzDate(v: string): string | null {
+  const m = v.trim().match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/);
+  if (!m) return null;
+  const d = Number(m[1]), mo = Number(m[2]), y = Number(m[3]);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const date = new Date(y, mo - 1, d);
+  if (date.getMonth() !== mo - 1 || date.getDate() !== d) return null;
+  return isoDate(date);
+}
+
+/** Yozayotganda "09082026" → "09.08.2026" ko'rinishiga keltiradi. */
+export function maskUzDate(v: string): string {
+  const d = v.replace(/\D/g, '').slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}.${d.slice(2)}`;
+  return `${d.slice(0, 2)}.${d.slice(2, 4)}.${d.slice(4)}`;
+}
+
+export function addDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return isoDate(new Date(y, m - 1, d + days));
+}
+
+/** ISO sana-vaqt → "09.08.2026 08:15" */
+export function fmtDateTime(v: string): string {
+  const d = new Date(v);
+  return `${fmtDate(isoDate(d))} ${fmtTime(d)}`;
+}

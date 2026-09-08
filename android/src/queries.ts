@@ -12,6 +12,7 @@ export interface ClassItem {
   letter: string;
   name: string;
   student_count: number;
+  monthly_fee: number;
   homeroom_teacher_id: string | null;
   homeroom_teacher: string | null;
 }

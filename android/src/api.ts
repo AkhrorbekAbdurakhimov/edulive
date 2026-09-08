@@ -33,7 +33,24 @@ export interface AuthedUser {
   phone: string | null;
   role: string;
   schoolId: string | null;
+  /** Kutubxona huquqi — roldan mustaqil belgi (users.is_librarian). */
+  isLibrarian?: boolean;
 }
+
+/**
+ * Huquqlar — backend `requireRole` bilan bir xil chegaralar. Bu faqat
+ * interfeys tomoni: ishlamaydigan tugmani ko'rsatmaslik uchun. Yakuniy
+ * qaror serverda.
+ */
+export const perms = (u: AuthedUser) => {
+  const staff = u.role === 'admin' || u.role === 'manager';
+  return {
+    staff,                                   // boshqaruv, o'quvchilar, to'lovlar, qarzdorlar, xabarlar
+    admin: u.role === 'admin',               // sinf/xodim yaratish, o'quv yili
+    library: staff || !!u.isLibrarian,       // kutubxona bo'limi
+    teacher: u.role === 'teacher',
+  };
+};
 
 /**
  * Foydalanuvchi kartochkasi lokal saqlanadi: oflayn ishga tushganda ham
@@ -61,6 +78,14 @@ export const ROLE_LABELS: Record<string, string> = {
   teacher: "O'qituvchi",
 };
 export const roleLabel = (role: string): string => ROLE_LABELS[role] ?? role;
+
+/** So'rov satri: bo'sh qiymatlar tashlanadi. RN'da URLSearchParams to'liq emas. */
+export function qs(params: Record<string, string | number | boolean | null | undefined>): string {
+  const parts = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+  return parts.length ? `?${parts.join('&')}` : '';
+}
 
 export class ApiError extends Error {
   constructor(
