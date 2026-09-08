@@ -46,6 +46,11 @@ services:
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-edulive_bot}
       # Bo'sh bo'lsa webhook javob bermaydi (403) — fail-closed.
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      # Xodimlar boti (@eduliveuz_bot) — hisobot, zaxira nusxa, hodisalar.
+      # Ota-onalar botidan alohida.
+      TELEGRAM_STAFF_TOKEN: ${TELEGRAM_STAFF_TOKEN:-}
+      TELEGRAM_STAFF_USERNAME: ${TELEGRAM_STAFF_USERNAME:-eduliveuz_bot}
+      TELEGRAM_STAFF_SECRET: ${TELEGRAM_STAFF_SECRET:-}
       ATTENDANCE_EDIT_WINDOW_HOURS: ${ATTENDANCE_EDIT_WINDOW_HOURS:-3}
       BACKUP_DIR: /app/backups
     volumes:

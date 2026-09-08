@@ -518,6 +518,9 @@ studentsRoutes.delete(
     if (c.payments > 0) blockers.push(`${c.payments} ta to'lov`);
     if (c.invoices > 0) blockers.push(`${c.invoices} ta hisob`);
     if (c.attendance > 0) blockers.push(`${c.attendance} ta davomat yozuvi`);
+    // Qo'lida kitob bo'lsa o'chirish nusxani 'issued' holatida qoldirardi va
+    // kitob kutubxonadan butunlay yo'qolardi.
+    if (c.books > 0) blockers.push(`${c.books} ta qaytarilmagan kitob`);
     if (blockers.length) {
       throw conflict(
         `O'chirib bo'lmaydi — ${blockers.join(', ')} bor. ` +
@@ -531,6 +534,13 @@ studentsRoutes.delete(
         action: 'student.delete', entity: 'student', entityId: id,
         before: { name: `${c.last_name} ${c.first_name}` },
       }, client);
+      // Ehtiyot chorasi: har qanday holatda qolib ketgan nusxa javonga qaytsin.
+      await client.query(
+        `UPDATE book_copies SET status = 'shelf'
+          WHERE school_id = $2 AND status = 'issued'
+            AND id IN (SELECT copy_id FROM book_loans WHERE student_id = $1)`,
+        [id, req.schoolId],
+      );
       await client.query(`DELETE FROM students WHERE id = $1 AND school_id = $2`, [id, req.schoolId]);
     });
 
@@ -542,12 +552,13 @@ studentsRoutes.delete(
 function client_counts(id: string, schoolId: string) {
   return pool.query<{
     last_name: string; first_name: string;
-    payments: number; invoices: number; attendance: number;
+    payments: number; invoices: number; attendance: number; books: number;
   }>(
     `SELECT s.last_name, s.first_name,
             (SELECT count(*)::int FROM payments WHERE student_id = s.id) AS payments,
             (SELECT count(*)::int FROM invoices WHERE student_id = s.id) AS invoices,
-            (SELECT count(*)::int FROM attendance WHERE student_id = s.id) AS attendance
+            (SELECT count(*)::int FROM attendance WHERE student_id = s.id) AS attendance,
+            (SELECT count(*)::int FROM book_loans WHERE student_id = s.id AND status = 'issued') AS books
        FROM students s WHERE s.id = $1 AND s.school_id = $2`,
     [id, schoolId],
   );

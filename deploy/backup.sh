@@ -4,6 +4,16 @@
 #   15 3 * * * /opt/edulive/deploy/backup.sh >> /var/log/edulive-backup.log 2>&1
 set -euo pipefail
 
+# ---------------------------------------------------------------- Telegram
+# Zaxira NUSXASINI botga backend yuboradi (kunlik rejalashtiruvchi, 04:00).
+# Bu yerda faqat MUVAFFAQIYATSIZLIK haqida ogohlantiramiz: skript yiqilsa
+# hech kim bilmay qolardi va bir kun kelib nusxa yo'qligi ma'lum bo'lardi.
+notify_failure() {
+  [ -n "${TELEGRAM_STAFF_TOKEN:-}" ] || return 0
+  curl -sS -m 20 -X POST     "https://api.telegram.org/bot${TELEGRAM_STAFF_TOKEN}/sendMessage"     -d "chat_id=${TELEGRAM_ALERT_CHAT_ID:-}"     --data-urlencode "text=⚠️ EduLive: kunlik zaxira nusxa OLINMADI ($(date -Is)). Serverni tekshiring."     >/dev/null 2>&1 || true
+}
+trap 'notify_failure' ERR
+
 cd /opt/edulive
 # POSTGRES_USER / POSTGRES_DB / BACKUP_REMOTE deploy .env dan olinadi.
 set -a; [ -f /opt/edulive/.env ] && . /opt/edulive/.env; set +a

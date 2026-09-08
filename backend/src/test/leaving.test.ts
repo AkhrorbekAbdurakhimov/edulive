@@ -134,3 +134,28 @@ test("menejer o'chira olmaydi (faqat admin)", async () => {
   const res = await api('DELETE', `/students/${s.studentId}`, undefined, school.managerToken);
   assert.equal(res.status, 403);
 });
+
+test("qo'lida kitob bor o'quvchini o'chirib bo'lmaydi", async () => {
+  // O'chirilsa book_loans kaskad bilan ketadi, nusxa esa 'issued' holatida
+  // qotib qolardi — kitob kutubxonadan butunlay yo'qolardi.
+  const s = await createTestStudent(school, 'Kitobli', 'Bola');
+  const book = await api('POST', '/library/books',
+    { title: 'Ketish sinovi', copies: 1 }, school.adminToken);
+  const loan = await api('POST', '/library/loans',
+    { studentId: s.studentId, bookId: book.body.book.id }, school.adminToken);
+  assert.equal(loan.status, 201, JSON.stringify(loan.body));
+
+  const res = await api('DELETE', `/students/${s.studentId}`, undefined, school.adminToken);
+  assert.equal(res.status, 409, JSON.stringify(res.body));
+  assert.match(res.body.error, /qaytarilmagan kitob/);
+
+  // Kitob qaytarilgach o'chirish mumkin va nusxa javonda qoladi
+  await api('POST', `/library/loans/${loan.body.loan.id}/return`,
+    { condition: 'good' }, school.adminToken);
+  const ok = await api('DELETE', `/students/${s.studentId}`, undefined, school.adminToken);
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+
+  const { rows } = await pool.query<{ status: string }>(
+    `SELECT status FROM book_copies WHERE book_id = $1`, [book.body.book.id]);
+  assert.equal(rows[0].status, 'shelf', 'nusxa javonda qolishi kerak');
+});

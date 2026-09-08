@@ -9,6 +9,7 @@ import { getCurrentYear, getSchoolSettings } from '../schools/schools.service.js
 import { badRequest, notFound } from '../../utils/errors.js';
 import { ah } from '../../utils/http.js';
 import { parse } from '../../utils/validate.js';
+import { notifyStaff } from '../staffbot/staffbot.service.js';
 
 const monthStr = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Oy formati: YYYY-MM');
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Sana formati: YYYY-MM-DD');
@@ -511,6 +512,17 @@ paymentsRoutes.post(
         [req.schoolId, input.studentId, input.amount, payment.receipt_no, left, body],
       );
 
+      // Maktab ma'muriyatiga xizmat botiga xabar — fire-and-forget:
+      // Telegram javob bermasa ham kassa ishlayveradi.
+      void notifyStaff(
+        req.schoolId!,
+        `💰 <b>To'lov qabul qilindi</b>
+` +
+        `${fin[0]?.name ?? "O'quvchi"} — ${uz(input.amount)}
+` +
+        `Kvitansiya: ${payment.receipt_no} · ${req.user!.fullName}`,
+      );
+
       await audit(
         req,
         {
@@ -547,10 +559,20 @@ paymentsRoutes.get(
       `SELECT p.id, p.student_id, s.last_name || ' ' || s.first_name AS student_name,
               p.amount, p.provider, p.status, p.paid_at, p.receipt_no, p.note,
               u.full_name AS received_by,
+              -- Qaysi oy(lar) uchun: bitta to'lov bir necha oyga taqsimlanishi
+              -- mumkin, shuning uchun ro'yxat. Taqsimlanmagan pul avans bo'lib
+              -- turadi — u holda bo'sh qaytadi va UI "avans" deb ko'rsatadi.
+              COALESCE(pm.months, '{}') AS period_months,
               count(*) OVER()::int AS total
          FROM payments p
          JOIN students s ON s.id = p.student_id
          LEFT JOIN users u ON u.id = p.received_by
+         LEFT JOIN LATERAL (
+           SELECT array_agg(DISTINCT to_char(i.period_month, 'YYYY-MM') ORDER BY to_char(i.period_month, 'YYYY-MM')) AS months
+             FROM payment_allocations pa
+             JOIN invoices i ON i.id = pa.invoice_id
+            WHERE pa.payment_id = p.id
+         ) pm ON true
         WHERE p.school_id = $1
           AND ($2::uuid IS NULL OR p.student_id = $2)
           AND ($3::date IS NULL OR p.paid_at >= $3)

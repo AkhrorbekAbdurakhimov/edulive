@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth, roleLabel, type User } from '../lib/auth';
 import { initials } from '../components/ui';
@@ -11,6 +11,7 @@ export default function Settings() {
         <h1>Sozlamalar</h1>
       </div>
       <Profile />
+      <TelegramLink />
       <ChangePassword />
       <SchoolSettings />
     </div>
@@ -254,6 +255,84 @@ function SchoolSettings() {
           </button>
         </div>
       </form>
+    </Section>
+  );
+}
+
+/**
+ * Xizmat botiga ulanish.
+ *
+ * Chat raqami qo'lda kiritilmaydi — bir martalik havola beriladi va bot
+ * o'zi qaysi hisob ekanini biladi. Aks holda birov boshqaning hisobotini
+ * o'z chatiga yo'naltirib olishi mumkin edi.
+ */
+function TelegramLink() {
+  const qc = useQueryClient();
+  const [link, setLink] = useState<string | null>(null);
+
+  const q = useQuery({
+    queryKey: ['staffbot-link'],
+    queryFn: async () =>
+      (await api.get<{ linked: boolean; configured: boolean; username: string }>('/staffbot/link')).data,
+  });
+
+  const make = useMutation({
+    mutationFn: async () => (await api.post<{ link: string }>('/staffbot/link')).data,
+    onSuccess: (d) => setLink(d.link),
+  });
+
+  const unlink = useMutation({
+    mutationFn: async () => (await api.delete('/staffbot/link')).data,
+    onSuccess: () => { setLink(null); qc.invalidateQueries({ queryKey: ['staffbot-link'] }); },
+  });
+
+  if (q.isPending || !q.data?.configured) return null;
+
+  return (
+    <Section
+      title="Telegram"
+      hint="Kunlik hisobot, to'lov xabarlari va zaxira nusxa shu bot orqali keladi."
+    >
+      {q.data.linked ? (
+        <>
+          <p className="save-note">✓ Hisobingiz botga ulangan</p>
+          <p className="muted">
+            Botda <strong>/bugun</strong>, <strong>/hafta</strong>, <strong>/oy</strong> deb
+            yozsangiz hisobot darhol keladi.
+          </p>
+          <div className="actions">
+            <button className="btn btn-secondary" onClick={() => unlink.mutate()} disabled={unlink.isPending}>
+              Ulanishni uzish
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Quyidagi tugmani bosing — Telegram ochiladi va hisobingiz botga bog'lanadi.
+            Havola 15 daqiqa amal qiladi.
+          </p>
+          {link ? (
+            <>
+              <div className="row" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+                <a className="btn btn-primary" href={link} target="_blank" rel="noreferrer">
+                  Telegramda ochish
+                </a>
+                <code className="invite-link">{link}</code>
+              </div>
+              <p className="help">
+                Ochilgach <strong>Boshlash</strong> tugmasini bosing. Ulangach shu sahifani yangilang.
+              </p>
+            </>
+          ) : (
+            <div className="actions">
+              <button className="btn btn-primary" onClick={() => make.mutate()} disabled={make.isPending}>
+                {make.isPending ? 'Tayyorlanmoqda…' : 'Telegramni ulash'}
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </Section>
   );
 }

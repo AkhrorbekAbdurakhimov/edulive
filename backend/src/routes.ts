@@ -11,6 +11,7 @@ import { studentsRoutes } from './modules/students/students.routes.js';
 import { studentsImportRoutes } from './modules/students/students.import.routes.js';
 import { schoolsTelegramRoutes } from './modules/schools/schools.telegram.routes.js';
 import { telegramRoutes } from './modules/telegram/telegram.routes.js';
+import { staffBotRoutes, staffBotWebhook } from './modules/staffbot/staffbot.routes.js';
 import { attendanceRoutes } from './modules/attendance/attendance.routes.js';
 import { invoicesRoutes, paymentsRoutes } from './modules/payments/payments.routes.js';
 import { debtorsRoutes } from './modules/debtors/debtors.routes.js';
@@ -33,6 +34,9 @@ api.use('/auth', authRoutes);
 // Telegram webhook: Telegram serveri uradi, token/sessiya yo'q.
 // Himoya manzildagi maxfiy segment va Telegram sarlavhasi orqali.
 api.use('/telegram', telegramRoutes);
+
+// Xodimlar boti webhooki — ham ochiq, ham alohida maxfiy segment bilan.
+api.use('/staffbot/webhook', staffBotWebhook);
 
 // --- himoyalangan yo'llar ---------------------------------------------
 api.use(authenticate, resolveTenant);
@@ -62,6 +66,8 @@ api.use('/library/books/import', platformReadOnly, libraryImportRoutes);
 api.use('/library', platformReadOnly, libraryRoutes);
 api.use('/audit', auditRoutes);
 api.use('/dashboard', dashboardRoutes);
+// Har bir xodim o'zini botga ulaydi — maktab konteksti talab qilinmaydi.
+api.use('/staffbot', staffBotRoutes);
 
 // TODO — keyingi bosqichlar:
 // api.use('/grades',   gradeRoutes);     // 2-bosqich

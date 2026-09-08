@@ -33,6 +33,24 @@ export const env = {
     webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? '',
   },
 
+  /**
+   * XODIMLAR boti (@eduliveuz_bot) — ota-onalar botidan alohida.
+   *
+   * Egasi va maktab ma'muriyati shu yerdan hisobot, zaxira nusxa va muhim
+   * hodisalar haqida xabar oladi. Chat foydalanuvchiga ulash KODI orqali
+   * bog'lanadi (users.telegram_chat_id) — qo'lda chat raqami yozilmaydi.
+   */
+  staffBot: {
+    token: process.env.TELEGRAM_STAFF_TOKEN ?? '',
+    username: process.env.TELEGRAM_STAFF_USERNAME ?? 'eduliveuz_bot',
+    // Bo'sh bo'lsa webhook javob bermaydi — fail-closed.
+    webhookSecret: process.env.TELEGRAM_STAFF_SECRET ?? '',
+  },
+
+  // Kunlik pg_dump shu papkaga tushadi (cron), bot shu yerdan oxirgisini oladi.
+  backupDir: process.env.BACKUP_DIR ?? './backups',
+
+
   // O'qituvchi davomatni necha soat ichida o'zi tuzata oladi.
   attendanceEditWindowHours: Number(process.env.ATTENDANCE_EDIT_WINDOW_HOURS ?? 3),
 } as const;

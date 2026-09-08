@@ -329,3 +329,30 @@ test('o\'quv yilidan tashqaridagi oyga hisob chiqarilmaydi', async () => {
   assert.equal(res.status, 400);
   assert.match(res.body.error, /o'quv yiliga kirmaydi/);
 });
+
+test("to'lovlar ro'yxati qaysi oy uchunligini ko'rsatadi", async () => {
+  const s = await createTestStudent(school, 'Oylik', 'Toluvchi');
+  await api('POST', '/invoices/generate', { periodMonth: '2026-09' }, school.adminToken);
+  await api('POST', '/invoices/generate', { periodMonth: '2026-10' }, school.adminToken);
+
+  // Ikki oyga yetadigan summa — bitta to'lov ikkala oyga taqsimlanadi
+  const pay = await api('POST', '/payments',
+    { studentId: s.studentId, amount: 2_000_000, provider: 'cash' }, school.adminToken);
+  assert.equal(pay.status, 201, JSON.stringify(pay.body));
+
+  const list = await api('GET', `/payments?studentId=${s.studentId}`, undefined, school.adminToken);
+  const row = list.body.items[0];
+  assert.deepEqual(row.period_months, ['2026-09', '2026-10'],
+    `ikkala oy ham ko'rinishi kerak: ${JSON.stringify(row.period_months)}`);
+});
+
+test("hisobga bog'lanmagan to'lovda oylar bo'sh (avans)", async () => {
+  const s = await createTestStudent(school, 'Avansli', 'Bola');
+  // Hisob yo'q — pul taqsimlanmaydi
+  const pay = await api('POST', '/payments',
+    { studentId: s.studentId, amount: 50_000, provider: 'cash' }, school.adminToken);
+  assert.equal(pay.status, 201);
+
+  const list = await api('GET', `/payments?studentId=${s.studentId}`, undefined, school.adminToken);
+  assert.deepEqual(list.body.items[0].period_months, [], 'avans — oy yo\'q');
+});

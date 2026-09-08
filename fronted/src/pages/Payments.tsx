@@ -9,6 +9,8 @@ interface StudentRow { id: string; last_name: string; first_name: string; class_
 interface PaymentRow {
   id: string; student_name: string; amount: number; provider: string;
   paid_at: string; receipt_no: string | null; received_by: string | null;
+  /** Qaysi oy(lar)ga taqsimlangani: YYYY-MM. Bo'sh bo'lsa — avans. */
+  period_months: string[];
 }
 interface Finance { invoiced: number; paid: number; outstanding: number; advance: number }
 /** Jadval qatori: hisobi chiqarilmagan oyda `id` null, summa kutilayotgani. */
@@ -291,12 +293,18 @@ export default function Payments() {
           <p className="muted" style={{ padding: '12px 20px 20px' }}>Hali to'lov qabul qilinmagan.</p>
         ) : (
           <table className="tbl">
-            <thead><tr><th>O'quvchi</th><th>Summa</th><th>Usul</th><th>Sana</th><th>Kvitansiya</th><th>Qabul qildi</th></tr></thead>
+            <thead><tr><th>O'quvchi</th><th>Summa</th><th>Qaysi oy uchun</th><th>Usul</th><th>Sana</th><th>Kvitansiya</th><th>Qabul qildi</th></tr></thead>
             <tbody>
               {paymentsToday.data.map((p) => (
                 <tr key={p.id}>
                   <td data-label="O'quvchi"><strong>{p.student_name}</strong></td>
                   <td data-label="Summa" className="num">{money(p.amount)}</td>
+                  <td data-label="Qaysi oy uchun">
+                    {p.period_months?.length
+                      ? p.period_months.map((m) => monthLabel(`${m}-01`)).join(', ')
+                      // Hisobga bog'lanmagan pul — hisob chiqarilgach o'zi taqsimlanadi.
+                      : <span className="muted">avans</span>}
+                  </td>
                   <td data-label="Usul">{PROVIDERS.find((x) => x.v === p.provider)?.label ?? p.provider}</td>
                   <td data-label="Sana">{date(p.paid_at)}</td>
                   <td data-label="Kvitansiya" className="num">{p.receipt_no}</td>
