@@ -241,6 +241,20 @@ table.tbl { width: 100%; border-collapse: collapse; }
   border-bottom: 1px solid var(--border);
 }
 
+/* Ogohlantirish qutisi — masalan, o'quvchi qo'lida kitob turganda.
+   Rang yolg'iz ma'no tashimaydi: ikonka va matn birga turadi. */
+.alarm {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin: 4px 0 14px; padding: 12px 14px;
+  border: 1px solid var(--warn); border-radius: var(--r-card);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  color: var(--t1); font-size: 13px; line-height: 1.45;
+}
+.alarm-icon { color: var(--warn-ink); font-size: 16px; line-height: 1.2; }
+.alarm strong { display: block; color: var(--warn-ink); }
+.alarm-list { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 4px; }
+.alarm-list li { color: var(--t2); }
+
 /* ---------------------------------------------------------------- misc */
 .row { display: flex; align-items: center; gap: 12px; }
 .muted { color: var(--t2); font-size: 13px; }

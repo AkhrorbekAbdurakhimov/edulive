@@ -25,6 +25,13 @@ before(async () => {
   ({ server, api } = startServer());
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
   school = await createTestSchool(SLUG);
+  // Bu fayldagi testlar nusxa hisobini tekshiradi, shuning uchun chegara
+  // ko'tarilgan. Sukut chegara (bitta kitob) pastda alohida maktabda sinaladi.
+  await pool.query(
+    `UPDATE schools SET settings = settings || '{"library_max_books_per_student": 5}'
+      WHERE id = $1`,
+    [school.schoolId],
+  );
   studentId = (await createTestStudent(school, 'Kitobxon', 'Aziz')).studentId;
   student2Id = (await createTestStudent(school, 'Kitobxon', 'Zuhra')).studentId;
 });
@@ -213,6 +220,78 @@ test('kutubxona sozlamasi: sukut muddat', async () => {
     [school.schoolId]);
   const res2 = await api('GET', '/library/settings', undefined, school.adminToken);
   assert.equal(res2.body.loanDays, 21, 'muddat kodda emas, sozlamada');
+});
+
+test("qo'lida kitobi bor o'quvchiga yangisi berilmaydi", async () => {
+  // Alohida maktab: sukut chegara — bitta kitob.
+  const one = await createTestSchool('test-library-one');
+  try {
+    const reader = await createTestStudent(one, 'Bitta', 'Kitobxon');
+    const b1 = await api('POST', '/library/books', { title: "O'tkan kunlar", copies: 2 }, one.adminToken);
+    const b2 = await api('POST', '/library/books', { title: 'Mehrobdan chayon', copies: 1 }, one.adminToken);
+
+    const first = await api('POST', '/library/loans',
+      { studentId: reader.studentId, bookId: b1.body.book.id }, one.adminToken);
+    assert.equal(first.status, 201, JSON.stringify(first.body));
+
+    // Boshqa kitob ham, o'sha kitobning ikkinchi nusxasi ham berilmaydi.
+    for (const bookId of [b2.body.book.id, b1.body.book.id]) {
+      const res = await api('POST', '/library/loans',
+        { studentId: reader.studentId, bookId }, one.adminToken);
+      assert.equal(res.status, 409, JSON.stringify(res.body));
+      assert.equal(res.body.code, 'loan_limit');
+      assert.match(res.body.error, /O'tkan kunlar/, 'xato qaysi kitob turganini aytishi kerak');
+    }
+
+    // Kutubxonachi tugmani bosishdan oldin ogohlantirishni ko'radi.
+    const active = await api('GET', `/library/students/${reader.studentId}/active`,
+      undefined, one.adminToken);
+    assert.equal(active.status, 200);
+    assert.equal(active.body.limit, 1);
+    assert.equal(active.body.blocked, true);
+    assert.equal(active.body.items.length, 1);
+    assert.equal(active.body.items[0].title, "O'tkan kunlar");
+    assert.ok(active.body.items[0].inventory_no);
+    assert.match(active.body.message, /O'tkan kunlar/);
+
+    // Qaytargandan keyin yangisini olishi mumkin.
+    await api('POST', `/library/loans/${first.body.loan.id}/return`,
+      { condition: 'good' }, one.adminToken);
+    const again = await api('POST', '/library/loans',
+      { studentId: reader.studentId, bookId: b2.body.book.id }, one.adminToken);
+    assert.equal(again.status, 201, JSON.stringify(again.body));
+  } finally {
+    await dropTestSchool('test-library-one');
+  }
+});
+
+test("kitob chegarasi sozlamada o'zgaradi", async () => {
+  const two = await createTestSchool('test-library-two');
+  try {
+    await pool.query(
+      `UPDATE schools SET settings = settings || '{"library_max_books_per_student": 2}'
+        WHERE id = $1`,
+      [two.schoolId]);
+
+    const reader = await createTestStudent(two, 'Ikkita', 'Kitobxon');
+    const b = await api('POST', '/library/books', { title: 'Shum bola', copies: 3 }, two.adminToken);
+
+    for (let i = 0; i < 2; i += 1) {
+      const r = await api('POST', '/library/loans',
+        { studentId: reader.studentId, bookId: b.body.book.id }, two.adminToken);
+      assert.equal(r.status, 201, JSON.stringify(r.body));
+    }
+
+    const settings = await api('GET', '/library/settings', undefined, two.adminToken);
+    assert.equal(settings.body.maxBooks, 2, 'chegara kodda emas, sozlamada');
+
+    const res = await api('POST', '/library/loans',
+      { studentId: reader.studentId, bookId: b.body.book.id }, two.adminToken);
+    assert.equal(res.status, 409);
+    assert.match(res.body.error, /chegara 2 ta/);
+  } finally {
+    await dropTestSchool('test-library-two');
+  }
 });
 
 test('boshqa maktabning kitobi ko\'rinmaydi', async () => {

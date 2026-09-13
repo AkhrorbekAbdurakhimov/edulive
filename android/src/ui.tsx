@@ -213,6 +213,27 @@ export function Banner({ kind, text, icon, action }: { kind: StatusKind; text: s
   );
 }
 
+/**
+ * Ogohlantirish qutisi (web `.alarm`) — forma ichida, yumaloq burchakli.
+ * Rang yolg'iz ma'no tashimaydi: ikonka + sarlavha matni birga turadi.
+ */
+export function Alarm({ title, children }: { title: string; children?: ReactNode }) {
+  const c = useTheme();
+  const { fg, bg } = statusColors(c, 'warn');
+  return (
+    <View
+      accessibilityRole="alert"
+      style={{ flexDirection: 'row', gap: 8, padding: 12, borderRadius: radius.tile, backgroundColor: bg, borderWidth: 1, borderColor: c.warn }}
+    >
+      <Icon name="alert-triangle" size={16} color={fg} />
+      <View style={{ flex: 1, gap: 4 }}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: fg }}>{title}</Text>
+        {children}
+      </View>
+    </View>
+  );
+}
+
 export function Skeleton({ rows = 3, height = 64 }: { rows?: number; height?: number }) {
   const c = useTheme();
   return (

@@ -8,6 +8,8 @@ export interface GuardianPhone {
   phone: string;
   isPrimary: boolean;
   telegramLinked: boolean;
+  /** none — ulanmagan · pending — tasdiq kutilmoqda · confirmed · rejected */
+  telegramState?: 'none' | 'pending' | 'confirmed' | 'rejected';
   notifyEnabled: boolean;
 }
 
@@ -98,11 +100,10 @@ export function Guardians(
                     <li key={ph.id}>
                       <span className="num">{ph.phone}</span>
                       {ph.isPrimary && <span className="chip neutral">asosiy</span>}
-                      {/* Botga ulanmagan raqamga xabar bormaydi — buni ko'rsatmasak
-                          "nega xabar kelmadi?" degan savol javobsiz qolardi. */}
-                      {ph.telegramLinked
-                        ? <span className="chip good">Telegram</span>
-                        : <span className="chip warn">Botga ulanmagan</span>}
+                      {/* Botga ulanmagan yoki tasdiqlanmagan raqamga xabar bormaydi —
+                          buni ko'rsatmasak "nega xabar kelmadi?" degan savol
+                          javobsiz qolardi. */}
+                      {tgChip(ph)}
                       {!ph.notifyEnabled && <span className="chip neutral">xabar o'chirilgan</span>}
 
                       {!readOnly && (
@@ -284,4 +285,19 @@ function AddPhoneModal(
       </form>
     </Modal>
   );
+}
+
+/**
+ * Raqamning Telegram holati.
+ *
+ * "Tasdiqlanmadi" eng muhimi: ota-ona botda "bu mening farzandim emas" degan,
+ * ya'ni raqam yoki biriktirish xato. Bu holat ko'rinmasa, xabarlar jimgina
+ * to'xtab qolardi.
+ */
+function tgChip(ph: GuardianPhone) {
+  const state = ph.telegramState ?? (ph.telegramLinked ? 'confirmed' : 'none');
+  if (state === 'confirmed') return <span className="chip good">✓ Telegram</span>;
+  if (state === 'rejected') return <span className="chip crit">✕ Tasdiqlamadi</span>;
+  if (state === 'pending') return <span className="chip warn">◔ Tasdiq kutilmoqda</span>;
+  return <span className="chip warn">Botga ulanmagan</span>;
 }

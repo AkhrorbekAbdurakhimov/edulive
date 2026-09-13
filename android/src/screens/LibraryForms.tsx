@@ -5,7 +5,7 @@ import { api, qs } from '../api';
 import { addDays, fmtDate, isoDate, maskUzDate, parseUzDate, rosterName } from '../format';
 import { ErrorText, FormSheet, Help, ListItem, MoneyField, SearchPicker, Select } from '../forms';
 import { radius, useTheme } from '../theme';
-import { BigButton, ErrorState, Field, Pill, Skeleton, type IconName, type StatusKind } from '../ui';
+import { Alarm, BigButton, ErrorState, Field, Pill, Skeleton, type IconName, type StatusKind } from '../ui';
 import type { StudentPick } from './StudentCardScreen';
 
 export interface BookRow {
@@ -19,6 +19,17 @@ export interface LoanRow {
   book_id: string; title: string; author: string | null; inventory_no: string;
   student_id: string; student_name: string; class_name: string | null;
   issued_by_name: string | null; condition_in: string | null;
+}
+
+/** Kitob berishdan oldin tekshiriladi: o'quvchi qo'lida nima turibdi. */
+export interface ActiveLoans {
+  limit: number;
+  blocked: boolean;
+  message: string | null;
+  items: Array<{
+    id: string; title: string; author: string | null; inventory_no: string;
+    issued_on: string; due_on: string; overdue: boolean; days_late: number;
+  }>;
 }
 
 export const CATEGORY: Record<string, string> = { darslik: 'Darslik', badiiy: 'Badiiy', qollanma: "Qo'llanma", ilmiy: 'Ilmiy', boshqa: 'Boshqa' };
@@ -69,10 +80,19 @@ export function IssueSheet({ open, onClose }: { open: boolean; onClose: () => vo
   const dueIso = parseUzDate(due);
   const badDue = due.length > 0 && (!dueIso || dueIso < isoDate());
 
+  // O'quvchi tanlangach darrov tekshiramiz — "Berish" bosilishini kutmaymiz.
+  const held = useQuery({
+    queryKey: ['student-active', student?.id],
+    enabled: Boolean(student),
+    queryFn: () => api<ActiveLoans>(`/library/students/${student!.id}/active`),
+  });
+  const blocked = held.data?.blocked ?? false;
+
   const issue = useMutation({
     mutationFn: () => api('/library/loans', 'POST', { studentId: student!.id, bookId: book!.id, dueOn: dueIso, note: note.trim() || undefined }),
     onSuccess: () => {
       libraryInvalidate(qc);
+      qc.invalidateQueries({ queryKey: ['student-active'] });
       setStudent(null); setBook(null); setNote(''); setDue('');
       onClose();
     },
@@ -87,7 +107,7 @@ export function IssueSheet({ open, onClose }: { open: boolean; onClose: () => vo
       title="Kitob berish"
       footer={
         <>
-          <BigButton title={issue.isPending ? 'Beriladi…' : 'Berish'} onPress={() => issue.mutate()} busy={issue.isPending} disabled={!student || !book || !dueIso || badDue} />
+          <BigButton title={issue.isPending ? 'Beriladi…' : 'Berish'} onPress={() => issue.mutate()} busy={issue.isPending} disabled={!student || !book || !dueIso || badDue || blocked || held.isFetching} />
           <BigButton title="Bekor qilish" variant="secondary" height={44} onPress={onClose} />
         </>
       }
@@ -103,6 +123,7 @@ export function IssueSheet({ open, onClose }: { open: boolean; onClose: () => vo
         onPick={setStudent}
         emptyText="O'quvchi topilmadi"
       />
+      {blocked && held.data ? <LoanAlarm data={held.data} /> : null}
       <SearchPicker<BookRow>
         label="Kitob"
         placeholder="Kitob nomi yoki muallif…"
@@ -127,6 +148,33 @@ export function IssueSheet({ open, onClose }: { open: boolean; onClose: () => vo
       <Field label="Izoh" value={note} onChangeText={setNote} placeholder="ixtiyoriy" />
       <ErrorText text={issue.error?.message} />
     </FormSheet>
+  );
+}
+
+/**
+ * Qo'lida kitobi bor o'quvchi — kutubxonachiga ogohlantirish.
+ */
+function LoanAlarm({ data }: { data: ActiveLoans }) {
+  const c = useTheme();
+  return (
+    <Alarm
+      title={
+        data.items.length === 1
+          ? "Bu o'quvchi hozir kitob o'qiyapti"
+          : `Bu o'quvchida ${data.items.length} ta kitob bor — chegara ${data.limit} ta`
+      }
+    >
+      {data.items.map((l) => (
+        <Text key={l.id} style={{ fontSize: 13, color: c.t2 }}>
+          {l.title}
+          {l.author ? ` — ${l.author}` : ''} · {l.inventory_no} · muddat {fmtDate(l.due_on)}
+          {l.overdue ? ` · ${l.days_late} kun kechikdi` : ''}
+        </Text>
+      ))}
+      <Text style={{ fontSize: 12, color: c.t3 }}>
+        Avval shu kitobni qabul qiling — «Berilganlar» bo'limi.
+      </Text>
+    </Alarm>
   );
 }
 

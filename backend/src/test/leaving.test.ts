@@ -159,3 +159,117 @@ test("qo'lida kitob bor o'quvchini o'chirib bo'lmaydi", async () => {
     `SELECT status FROM book_copies WHERE book_id = $1`, [book.body.book.id]);
   assert.equal(rows[0].status, 'shelf', 'nusxa javonda qolishi kerak');
 });
+
+// ================================================================ qarz bilan chiqarish
+
+/** O'quvchiga muddati o'tgan hisob yozadi (5 kun oldin to'lanishi kerak edi). */
+async function overdueInvoice(studentId: string, enrollmentId: string, amount: number) {
+  await pool.query(
+    `INSERT INTO invoices
+       (school_id, academic_year_id, student_id, enrollment_id, period_month, amount, discount, due_date)
+     VALUES ($1, $2, $3, $4, date_trunc('month', CURRENT_DATE)::date, $5, 0, CURRENT_DATE - 5)`,
+    [school.schoolId, school.yearId, studentId, enrollmentId, amount],
+  );
+}
+
+test("muddati o'tgan qarzi bor o'quvchi ro'yxatdan chiqmaydi", async () => {
+  const s = await createTestStudent(school, 'Qarzli', 'Bola');
+  await overdueInvoice(s.studentId, s.enrollmentId, 500_000);
+
+  const check = await api('GET', `/students/${s.studentId}/leaving-check`, undefined, school.adminToken);
+  assert.equal(check.status, 200, JSON.stringify(check.body));
+  assert.equal(check.body.blocked, true);
+  assert.equal(check.body.overdue, 500_000);
+  assert.equal(check.body.overdueInvoices, 1);
+
+  const res = await api('POST', `/students/${s.studentId}/archive`, { status: 'left' }, school.adminToken);
+  assert.equal(res.status, 409, JSON.stringify(res.body));
+  assert.equal(res.body.code, 'student_debt');
+  assert.match(res.body.error, /500 000 so'm/, 'qancha qarz borligini aytishi kerak');
+
+  // Rad etilgan chiqarish hech narsani o'zgartirmasligi kerak.
+  const { rows } = await pool.query<{ status: string; ends_on: string | null }>(
+    `SELECT s.status, e.ends_on::text FROM students s
+       JOIN enrollments e ON e.student_id = s.id WHERE s.id = $1`, [s.studentId]);
+  assert.equal(rows[0].status, 'active');
+  assert.equal(rows[0].ends_on, null);
+});
+
+test('qarz yopilgach chiqarish ishlaydi', async () => {
+  const s = await createTestStudent(school, 'Tolagan', 'Bola');
+  await overdueInvoice(s.studentId, s.enrollmentId, 500_000);
+
+  const pay = await api('POST', '/payments',
+    { studentId: s.studentId, amount: 500_000, provider: 'cash' }, school.adminToken);
+  assert.equal(pay.status, 201, JSON.stringify(pay.body));
+
+  const check = await api('GET', `/students/${s.studentId}/leaving-check`, undefined, school.adminToken);
+  assert.equal(check.body.blocked, false);
+  assert.equal(check.body.message, null);
+
+  const res = await api('POST', `/students/${s.studentId}/archive`, { status: 'left' }, school.adminToken);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+});
+
+test("qaytarilmagan kitob ham chiqarishga to'sqinlik qiladi", async () => {
+  const s = await createTestStudent(school, 'Kitobli', 'Ketuvchi');
+  const b = await api('POST', '/library/books', { title: 'Ketish kitobi', copies: 1 }, school.adminToken);
+  const loan = await api('POST', '/library/loans',
+    { studentId: s.studentId, bookId: b.body.book.id }, school.adminToken);
+  assert.equal(loan.status, 201, JSON.stringify(loan.body));
+
+  const res = await api('POST', `/students/${s.studentId}/archive`, { status: 'left' }, school.adminToken);
+  assert.equal(res.status, 409, JSON.stringify(res.body));
+  assert.match(res.body.error, /Ketish kitobi/, 'qaysi kitob ekanini aytishi kerak');
+
+  await api('POST', `/library/loans/${loan.body.loan.id}/return`, { condition: 'good' }, school.adminToken);
+  const ok = await api('POST', `/students/${s.studentId}/archive`, { status: 'left' }, school.adminToken);
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+});
+
+test("muddati kelmagan joriy oy hisobi to'sqinlik qilmaydi", async () => {
+  // Proratsiya ketgan sanaga qarab hisobni qayta hisoblaydi — yakuniy summa
+  // chiqarishdan oldin ma'lum emas, shuning uchun bloklamaydi.
+  const s = await createTestStudent(school, 'Muddati', 'Kelmagan');
+  await pool.query(
+    `INSERT INTO invoices
+       (school_id, academic_year_id, student_id, enrollment_id, period_month, amount, discount, due_date)
+     VALUES ($1, $2, $3, $4, date_trunc('month', CURRENT_DATE)::date, 400000, 0, CURRENT_DATE + 10)`,
+    [school.schoolId, school.yearId, s.studentId, s.enrollmentId],
+  );
+
+  const check = await api('GET', `/students/${s.studentId}/leaving-check`, undefined, school.adminToken);
+  assert.equal(check.body.blocked, false);
+  assert.equal(check.body.outstanding, 400_000, 'summa baribir ko\u2019rinib turadi');
+  assert.equal(check.body.overdue, 0);
+
+  const res = await api('POST', `/students/${s.studentId}/archive`, { status: 'left' }, school.adminToken);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+});
+
+test('qarz bilan chiqarishni faqat admin ocha oladi', async () => {
+  const s = await createTestStudent(school, 'Majburiy', 'Chiqarish');
+  await overdueInvoice(s.studentId, s.enrollmentId, 700_000);
+
+  const byManager = await api('POST', `/students/${s.studentId}/archive`,
+    { status: 'left', force: true }, school.managerToken);
+  assert.equal(byManager.status, 403, JSON.stringify(byManager.body));
+
+  const byAdmin = await api('POST', `/students/${s.studentId}/archive`,
+    { status: 'left', force: true, reason: 'oila shahardan ketdi' }, school.adminToken);
+  assert.equal(byAdmin.status, 200, JSON.stringify(byAdmin.body));
+  assert.equal(byAdmin.body.forced, true);
+
+  // Kim qancha qarzni bilib turib yopgani audit jurnalida qolishi kerak (2-qoida).
+  const { rows } = await pool.query<{ after: { forced: boolean; outstanding: number } }>(
+    `SELECT after FROM audit_log
+      WHERE school_id = $1 AND action = 'student.archive' AND entity_id = $2`,
+    [school.schoolId, s.studentId]);
+  assert.equal(rows[0].after.forced, true);
+  assert.equal(Number(rows[0].after.outstanding), 700_000);
+
+  // Qarz o'chib ketmaydi — hisob ochiqligicha qoladi.
+  const { rows: inv } = await pool.query<{ status: string }>(
+    `SELECT status FROM invoices WHERE student_id = $1`, [s.studentId]);
+  assert.equal(inv[0].status, 'open');
+});

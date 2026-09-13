@@ -7,7 +7,9 @@ import { ah } from '../../utils/http.js';
 import { parse, uuidParam } from '../../utils/validate.js';
 import { badRequest, conflict, notFound } from '../../utils/errors.js';
 import { audit } from '../audit/audit.service.js';
-import { dueDateFrom, issueBook, loanDays, markLost, returnBook } from './library.service.js';
+import {
+  activeLoans, dueDateFrom, issueBook, loanDays, loanLimitMessage, markLost, maxLoans, returnBook,
+} from './library.service.js';
 
 export const libraryRoutes = Router();
 libraryRoutes.use(requireTenant, requireLibrary);
@@ -356,7 +358,35 @@ libraryRoutes.get(
   '/settings',
   ah(async (req, res) => {
     const days = await loanDays(req.schoolId!);
-    res.json({ loanDays: days, defaultDueOn: dueDateFrom(days) });
+    res.json({
+      loanDays: days,
+      defaultDueOn: dueDateFrom(days),
+      maxBooks: await maxLoans(req.schoolId!),
+    });
+  }),
+);
+
+/**
+ * O'quvchi qo'lidagi kitoblar — kitob berishdan OLDIN so'raladi.
+ *
+ * Kutubxonachi bolani oldida ko'rib turganda ogohlantirishni darrov ko'rishi
+ * kerak: "Berish" tugmasini bosib xato olish kech.
+ */
+libraryRoutes.get(
+  '/students/:id/active',
+  ah(async (req, res) => {
+    const id = uuidParam(req);
+    const [limit, items] = await Promise.all([
+      maxLoans(req.schoolId!),
+      activeLoans(pool, req.schoolId!, id),
+    ]);
+    const blocked = items.length >= limit;
+    res.json({
+      limit,
+      items,
+      blocked,
+      message: blocked ? loanLimitMessage(items, limit) : null,
+    });
   }),
 );
 

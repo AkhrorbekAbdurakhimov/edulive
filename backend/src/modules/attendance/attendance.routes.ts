@@ -198,8 +198,10 @@ attendanceRoutes.post(
            JOIN parents p ON p.id = sp.parent_id AND p.school_id = $1
            -- Har bir ULANGAN raqamga alohida: bitta odamning ikki raqami
            -- ikki xil chat, ikkalasi ham xabar olishi kerak.
+           -- Xabar FAQAT farzandini tasdiqlagan raqamga ketadi (008 migratsiya).
            JOIN parent_phones pp ON pp.parent_id = p.id
                 AND pp.notify_enabled AND pp.telegram_chat_id IS NOT NULL
+                AND pp.telegram_verified_at IS NOT NULL
           WHERE a.session_id = $2 AND a.school_id = $1 AND a.status <> 'present'
          RETURNING id`,
         [req.schoolId, sessionId],

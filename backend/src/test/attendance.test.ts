@@ -120,7 +120,8 @@ test("tasdiqlash: bildirishnomalar navbatga tushadi, takror tasdiqlash 409", asy
   // eslatmasi bilan bir xil qoida. Aks holda navbat albatta yiqiladigan
   // xabarlar bilan to'lib ketardi.
   await pool.query(
-    `UPDATE parent_phones SET telegram_chat_id = 71000001
+    `UPDATE parent_phones
+        SET telegram_chat_id = 71000001, telegram_verified_at = now()
       WHERE school_id = $1 AND phone = '+998936660000'`,
     [school.schoolId],
   );

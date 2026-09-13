@@ -4,15 +4,11 @@ import { pool } from '../../db/pool.js';
 import { requireRole } from '../../middleware/auth.js';
 import { requireTenant } from '../../middleware/tenant.js';
 import { ah } from '../../utils/http.js';
+import { uzSum } from '../../utils/money.js';
 import { parse } from '../../utils/validate.js';
 import { badRequest } from '../../utils/errors.js';
 import { audit } from '../audit/audit.service.js';
 import { dispatchQueued } from '../notifications/notifications.service.js';
-
-/** 1200000 -> "1 200 000 so'm" — xabar matni uchun. */
-function uzSum(n: number): string {
-  return `${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} so'm`;
-}
 
 /** 2026-09-10 -> 10.09.2026 */
 function fmtDate(d: string): string {
@@ -126,6 +122,7 @@ debtorsRoutes.post(
          JOIN parent_phones pp ON pp.parent_id = p.id
         WHERE sp.student_id = $2 AND p.school_id = $1
           AND pp.notify_enabled AND pp.telegram_chat_id IS NOT NULL
+          AND pp.telegram_verified_at IS NOT NULL
           AND NOT EXISTS (
             SELECT 1 FROM notifications n
              WHERE n.parent_phone_id = pp.id AND n.student_id = $2

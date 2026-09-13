@@ -53,6 +53,71 @@ maket va mavjud API mantiqi to'qnashgan joylarda **mantiq ustun** qo'yildi:
 
 Maketning 5-ekrani (haftalik baho) 2-bosqichda `grades` moduli bilan birga qilinadi.
 
+## Kutubxona: bitta o'quvchi — bitta kitob (13.09.2026)
+
+O'quvchiga qo'lidagi kitobni qaytarmaguncha yangisi berilmaydi. Kutubxonachi
+kitob berish oynasida o'quvchini tanlashi bilan ogohlantirish ko'radi: qaysi
+kitob, qaysi inventar raqam, muddati qachon, kechikkan bo'lsa necha kun.
+"Berish" tugmasi o'chadi, server ham `409 loan_limit` bilan rad etadi (ogohlantirish
+UI'da qolib ketmasin).
+
+- **Nega chegara:** kichik maktab kutubxonasida nusxa kam; bitta bolada 3 ta
+  kitob turgani — qolgan 30 bolaga kitob yetmagani.
+- **Nega sozlama:** chegara `schools.settings.library_max_books_per_student`
+  (3-qoida). Sukut — 1. Maktab boshqacha ishlasa qiymatni oshiradi, kod
+  o'zgarmaydi.
+- **Nega serverda ham:** ikki kutubxonachi bir vaqtda bir bolaga kitob bersa
+  ham chegara ushlanishi kerak — `issueBook` o'quvchi qatorini `FOR UPDATE`
+  bilan band qiladi.
+- **Nega bloklash, ogohlantirib o'tkazib yuborish emas:** "baribir bering"
+  tugmasi bo'lsa chegara yo'q demakdir. Kerak bo'lsa sozlamadan oshiriladi.
+
+## Qarzli o'quvchini ro'yxatdan chiqarish (13.09.2026)
+
+`POST /students/:id/archive` qarz bo'lsa `409 student_debt` bilan rad etadi.
+Qarz ikki xil: qaytarilmagan kitob va **muddati o'tgan** to'lanmagan hisob.
+Oyna ochilishi bilan `GET /students/:id/leaving-check` chaqiriladi — qaysi
+kitob va qancha pul qolgani tugmani bosishdan oldin ko'rinadi.
+
+- **Nega chiqarish daqiqasida:** bola ketgandan keyin na kitobni, na pulni
+  undirib bo'ladi. Yagona ta'sir nuqtasi — hujjat yopiladigan daqiqa.
+- **Nega faqat muddati o'tgan hisob to'sadi:** ketgan sana qo'yilganda joriy
+  oy hisobi o'qilgan kunlarga qarab qayta hisoblanadi (proratsiya). Yakuniy
+  summa chiqarishdan oldin ma'lum emas; muddati kelmagan oyni ham talab qilsak,
+  ota-ona to'liq oyni to'lardi va maktab qarzdor bo'lib qolardi. Muddati
+  kelmagan qoldiq oynada ma'lumot uchun ko'rsatiladi.
+- **Nega `force` bor va faqat adminda:** oila shahardan ko'chib ketishi mumkin —
+  hisobni abadiy ochiq qoldirib bo'lmaydi, aks holda bolaga har oy yangi hisob
+  yozilib qarz o'sib boraveradi. Menejer qarzni "kechira" olmaydi; admin
+  chiqarsa `audit_log` ga summasi bilan tushadi (2-qoida). Qarzning o'zi
+  o'chmaydi — hisob ochiq qoladi va qarzdorlar ro'yxatida turaveradi.
+- **Butunlay o'chirish** (`DELETE /students/:id`) avvalgidek: moliyaviy tarixi
+  bor o'quvchi umuman o'chmaydi.
+
+## Ota-ona botda farzandini tasdiqlaydi (13.09.2026)
+
+Raqam mos kelgani ulanish uchun yetarli emas. Bot avval farzand ma'lumotini
+ko'rsatadi — ism, sinf, tug'ilgan sana, oylik to'lov — va "Ha / Yo'q" so'raydi.
+Tasdiqlanmaguncha (`parent_phones.telegram_verified_at`) bu raqamga hech qanday
+xabar yuborilmaydi: davomat, to'lov va qarz eslatmasi so'rovlariga
+`telegram_verified_at IS NOT NULL` sharti qo'shildi.
+
+- **Nega kerak:** raqam bir odamdan boshqasiga o'tib ketadi (eski raqam qayta
+  sotiladi), importda ham xato yozilishi mumkin. Ilgari begona odam boshqaning
+  farzandi haqida davomat va to'lov xabarlarini olib turaverardi — bu shaxsiy
+  ma'lumotning sizib chiqishi.
+- **Nega oddiy klaviatura, inline tugma emas:** inline tugma `callback_query`
+  yuboradi, webhook esa `allowed_updates: ['message']` bilan o'rnatilgan.
+  Allaqachon ulangan maktablarda tugma jimgina ishlamay qolardi.
+- **"Yo'q" bosilsa:** raqam `telegram_rejected_at` bilan belgilanadi, xabar
+  butunlay to'xtaydi va ma'muriyat ikki joydan ogohlantiriladi — xizmat boti
+  (darhol) va "Xabarlar" bo'limi (`parent.link.rejected`, bot ulanmagan bo'lsa
+  ham yozuv qoladi). O'quvchi kartochkasida raqam "Tasdiqlamadi" deb turadi.
+- **Qarz ko'rsatilmaydi:** kartochkada faqat oylik to'lov summasi bor. Raqam
+  hali tasdiqlanmagan, ya'ni o'qiyotgan odam begona bo'lishi mumkin.
+- **Farzandi biriktirilmagan ota-ona** avvalgidek darhol ulanadi —
+  tasdiqlaydigan narsa yo'q.
+
 ## Ochiq masalalar
 
 - **Kundalik.com API.** Ochiq hujjatlashtirilgan API topilmadi. Rasmiy yozishma

@@ -11,8 +11,22 @@
  */
 import { useState, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, fmtNum, parseAmount } from '../lib/api';
+import { api, date, fmtNum, money, parseAmount } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { Modal } from './ui';
+
+/** Chiqarishga to'sqinlik qiladigan qarzlar — GET /students/:id/leaving-check. */
+interface LeavingCheck {
+  blocked: boolean;
+  message: string | null;
+  overdue: number;
+  outstanding: number;
+  overdueInvoices: number;
+  books: Array<{
+    id: string; title: string; inventory_no: string;
+    due_on: string; overdue: boolean; days_late: number;
+  }>;
+}
 
 export interface EditableStudent {
   id: string;
@@ -201,17 +215,28 @@ export function ArchiveModal({ id, name, onClose, onDone }: {
   id: string; name: string; onClose: () => void; onDone: () => void;
 }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [status, setStatus] = useState('left');
   const [endsOn, setEndsOn] = useState(() => new Date().toISOString().slice(0, 10));
   const [reason, setReason] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [force, setForce] = useState(false);
 
   const done = () => { qc.invalidateQueries({ queryKey: ['students'] }); onDone(); };
+
+  // Qarz oyna ochilishi bilan ko'rinadi — tugmani bosib xato olishdan oldin.
+  const debt = useQuery({
+    queryKey: ['leaving-check', id],
+    queryFn: async () =>
+      (await api.get<LeavingCheck>(`/students/${id}/leaving-check`)).data,
+  });
+  const blocked = debt.data?.blocked ?? false;
 
   const archive = useMutation({
     mutationFn: async () =>
       (await api.post(`/students/${id}/archive`, {
         status, endsOn, reason: reason.trim() || undefined,
+        ...(blocked ? { force: true } : {}),
       })).data as { recalculated: number },
     onSuccess: done,
   });
@@ -237,6 +262,39 @@ export function ArchiveModal({ id, name, onClose, onDone }: {
         Hisoblari va to'lovlari saqlanib qoladi.
       </p>
 
+      {blocked && debt.data && (
+        <div className="alarm" role="alert" style={{ marginTop: 12 }}>
+          {/* Rang yolg'iz ma'no tashimaydi — ikonka va so'z birga. */}
+          <span className="alarm-icon" aria-hidden>⚠</span>
+          <div>
+            <strong>Qarzi bor — avval yopilishi kerak</strong>
+            <ul className="alarm-list">
+              {debt.data.books.map((b) => (
+                <li key={b.id}>
+                  Qaytarilmagan kitob: {b.title} · <span className="num">{b.inventory_no}</span>
+                  {' · muddat '}<span className="num">{date(b.due_on)}</span>
+                  {b.overdue && <> · <strong>{b.days_late} kun kechikdi</strong></>}
+                </li>
+              ))}
+              {debt.data.overdue > 0 && (
+                <li>
+                  To'lanmagan hisob: <span className="num">{money(debt.data.overdue)}</span>
+                  {' '}({debt.data.overdueInvoices} ta oy)
+                </li>
+              )}
+            </ul>
+            <span>Kitob qaytarilsa va qarz to'lansa, chiqarish ochiladi.</span>
+          </div>
+        </div>
+      )}
+
+      {!blocked && (debt.data?.outstanding ?? 0) > 0 && (
+        <p className="muted" style={{ marginTop: 12 }}>
+          Muddati kelmagan hisob: <span className="num">{money(debt.data!.outstanding)}</span>.
+          Chiqarilgandan keyin ham qarz saqlanib qoladi.
+        </p>
+      )}
+
       <div className="field" style={{ marginTop: 12 }}>
         <label htmlFor="ar-status">Sabab</label>
         <select id="ar-status" className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -260,11 +318,30 @@ export function ArchiveModal({ id, name, onClose, onDone }: {
                onChange={(e) => setReason(e.target.value)} />
       </div>
 
+      {/* Qarzni kechirish emas, istisno: bola shahardan ketib qolgan bo'lishi
+          mumkin. Faqat admin va audit jurnaliga summasi bilan yoziladi. */}
+      {blocked && user?.role === 'admin' && (
+        <label className="check-row">
+          <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
+          <span>
+            Qarz bilan chiqarilsin
+            <span className="help">
+              Qarz o'chmaydi — hisob ochiq qoladi va qarzdorlar ro'yxatida turadi.
+              Kim chiqargani audit jurnaliga yoziladi.
+            </span>
+          </span>
+        </label>
+      )}
+
       {errMsg && <p className="hint" style={{ marginTop: 10 }}>{errMsg}</p>}
 
       <div className="actions">
         <button className="btn btn-secondary" onClick={onClose}>Bekor qilish</button>
-        <button className="btn btn-danger" onClick={() => archive.mutate()} disabled={archive.isPending}>
+        <button
+          className="btn btn-danger"
+          onClick={() => archive.mutate()}
+          disabled={archive.isPending || debt.isPending || (blocked && !force)}
+        >
           {archive.isPending ? 'Bajarilmoqda…' : "Ro'yxatdan chiqarish"}
         </button>
       </div>

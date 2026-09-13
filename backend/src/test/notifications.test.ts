@@ -136,7 +136,9 @@ test('qarz eslatmasi: botga ulanmagan bo\'lsa tushunarli xato qaytadi', async ()
 
 test('qarz eslatmasi navbatga tushadi va kuniga bir marta yuboriladi', async () => {
   await pool.query(
-    `UPDATE parent_phones SET telegram_chat_id = 4242, notify_enabled = true WHERE parent_id = $1`,
+    `UPDATE parent_phones
+        SET telegram_chat_id = 4242, telegram_verified_at = now(), notify_enabled = true
+      WHERE parent_id = $1`,
     [parentId],
   );
 
@@ -193,29 +195,59 @@ test("maktabning o'z boti bo'lsa havola o'sha botga ketadi", async () => {
 test("ulanmagan RAQAMLAR ro'yxati va sanoq to'g'ri", async () => {
   // Sanoq odam emas, RAQAM darajasida: bir odamning bir raqami ulangan,
   // ikkinchisi ulanmagan bo'lishi mumkin va ikkinchisi ham chaqirilishi kerak.
-  await pool.query(`UPDATE parent_phones SET telegram_chat_id = NULL WHERE parent_id = $1`, [parentId]);
+  await pool.query(
+    `UPDATE parent_phones
+        SET telegram_chat_id = NULL, telegram_verified_at = NULL, telegram_rejected_at = NULL
+      WHERE parent_id = $1`,
+    [parentId],
+  );
   const before = await api('GET', '/notifications/telegram', undefined, school.adminToken);
   assert.equal(before.body.parents.connected, 0);
   assert.ok(before.body.pending.some((x: { phone: string }) => x.phone === PARENT_PHONE),
     "ulanmagan raqam ro'yxatda bo'lishi kerak");
 
+  // Botni ochdi, lekin farzandini hali tasdiqlamadi — xabar ketmaydi.
   await pool.query(`UPDATE parent_phones SET telegram_chat_id = 555 WHERE parent_id = $1`, [parentId]);
+  const waiting = await api('GET', '/notifications/telegram', undefined, school.adminToken);
+  assert.equal(waiting.body.parents.connected, 0, 'tasdiqlanmagan raqam "ulangan" emas');
+  assert.equal(waiting.body.parents.waiting, 1);
+  assert.equal(
+    waiting.body.pending.find((x: { phone: string }) => x.phone === PARENT_PHONE)?.state,
+    'pending',
+  );
+
+  // "Bu mening farzandim emas" — ma'muriyat ro'yxat boshida ko'radi.
+  await pool.query(
+    `UPDATE parent_phones SET telegram_rejected_at = now() WHERE parent_id = $1`, [parentId]);
+  const rejected = await api('GET', '/notifications/telegram', undefined, school.adminToken);
+  assert.equal(rejected.body.parents.rejected, 1);
+  assert.equal(rejected.body.pending[0].state, 'rejected', 'tasdiqlamaganlar tepada turadi');
+
+  await pool.query(
+    `UPDATE parent_phones
+        SET telegram_verified_at = now(), telegram_rejected_at = NULL
+      WHERE parent_id = $1`,
+    [parentId]);
   const after2 = await api('GET', '/notifications/telegram', undefined, school.adminToken);
   assert.equal(after2.body.parents.connected, 1);
   assert.ok(!after2.body.pending.some((x: { phone: string }) => x.phone === PARENT_PHONE),
-    "ulangach ro'yxatdan chiqadi");
+    "tasdiqlagach ro'yxatdan chiqadi");
 });
 
 test('bir odamning ikki raqami ham xabar oladi', async () => {
   // Qo'shimcha raqam qo'shamiz va ikkalasini ham botga ulangan qilamiz.
   await pool.query(
-    `INSERT INTO parent_phones (school_id, parent_id, phone, telegram_chat_id)
-     VALUES ($1, $2, '+998901237799', 9999)
-     ON CONFLICT (school_id, phone) DO UPDATE SET telegram_chat_id = 9999`,
+    `INSERT INTO parent_phones
+       (school_id, parent_id, phone, telegram_chat_id, telegram_verified_at)
+     VALUES ($1, $2, '+998901237799', 9999, now())
+     ON CONFLICT (school_id, phone)
+       DO UPDATE SET telegram_chat_id = 9999, telegram_verified_at = now()`,
     [school.schoolId, parentId],
   );
   await pool.query(
-    `UPDATE parent_phones SET telegram_chat_id = 4242 WHERE parent_id = $1 AND is_primary`,
+    `UPDATE parent_phones
+        SET telegram_chat_id = 4242, telegram_verified_at = now()
+      WHERE parent_id = $1 AND is_primary`,
     [parentId]);
 
   const before = await pool.query<{ c: number }>(

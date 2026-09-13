@@ -33,6 +33,17 @@ const CONDITION: Record<string, string> = {
   new: 'Yangi', good: 'Yaxshi', worn: 'Eskirgan', damaged: 'Shikastlangan',
 };
 
+/** Kitob berishdan oldin tekshiriladi: o'quvchi qo'lida nima turibdi. */
+interface ActiveLoans {
+  limit: number;
+  blocked: boolean;
+  message: string | null;
+  items: Array<{
+    id: string; title: string; author: string | null; inventory_no: string;
+    issued_on: string; due_on: string; overdue: boolean; days_late: number;
+  }>;
+}
+
 type Tab = 'books' | 'loans' | 'overdue';
 
 export default function Library() {
@@ -517,6 +528,15 @@ function IssueModal({ onClose }: { onClose: () => void }) {
     },
   });
 
+  // O'quvchi tanlangach darrov tekshiramiz — "Berish" bosilishini kutmaymiz.
+  const held = useQuery({
+    queryKey: ['student-active', studentId],
+    enabled: Boolean(studentId),
+    queryFn: async () =>
+      (await api.get<ActiveLoans>(`/library/students/${studentId}/active`)).data,
+  });
+  const blocked = held.data?.blocked ?? false;
+
   const books = useQuery({
     queryKey: ['books-pick', bookQ],
     queryFn: async () => {
@@ -533,6 +553,7 @@ function IssueModal({ onClose }: { onClose: () => void }) {
       qc.invalidateQueries({ queryKey: ['loans'] });
       qc.invalidateQueries({ queryKey: ['books'] });
       qc.invalidateQueries({ queryKey: ['library-counts'] });
+      qc.invalidateQueries({ queryKey: ['student-active'] });
       onClose();
     },
   });
@@ -558,6 +579,34 @@ function IssueModal({ onClose }: { onClose: () => void }) {
           emptyText="O'quvchi topilmadi"
           required
         />
+
+        {blocked && held.data && (
+          <div className="alarm" role="alert">
+            {/* Rang yolg'iz ma'no tashimaydi — ikonka va so'z birga. */}
+            <span className="alarm-icon" aria-hidden>⚠</span>
+            <div>
+              <strong>
+                {held.data.items.length === 1
+                  ? "Bu o'quvchi hozir kitob o'qiyapti"
+                  : `Bu o'quvchida ${held.data.items.length} ta kitob bor — chegara ${held.data.limit} ta`}
+              </strong>
+              <ul className="alarm-list">
+                {held.data.items.map((l) => (
+                  <li key={l.id}>
+                    {l.title}
+                    {l.author ? ` — ${l.author}` : ''}
+                    {' · '}
+                    <span className="num">{l.inventory_no}</span>
+                    {' · muddat '}
+                    <span className="num">{date(l.due_on)}</span>
+                    {l.overdue && <> · <strong>{l.days_late} kun kechikdi</strong></>}
+                  </li>
+                ))}
+              </ul>
+              <span>Avval shu kitobni qabul qiling — «Berilganlar» bo'limi.</span>
+            </div>
+          </div>
+        )}
 
         <Picker
           label="Kitob"
@@ -604,7 +653,10 @@ function IssueModal({ onClose }: { onClose: () => void }) {
 
         <div className="actions">
           <button type="button" className="btn btn-secondary" onClick={onClose}>Bekor qilish</button>
-          <button className="btn btn-primary" disabled={!studentId || !bookId || !dueOn || issue.isPending}>
+          <button
+            className="btn btn-primary"
+            disabled={!studentId || !bookId || !dueOn || blocked || held.isPending || issue.isPending}
+          >
             {issue.isPending ? 'Beriladi…' : 'Berish'}
           </button>
         </div>

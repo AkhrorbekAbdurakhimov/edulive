@@ -14,7 +14,8 @@ import { Router } from 'express';
 import { pool } from '../../db/pool.js';
 import { env } from '../../config/env.js';
 import { ah } from '../../utils/http.js';
-import { tg, botForSchool } from './telegram.service.js';
+import { tg, botForSchool, childCard, childrenOf } from './telegram.service.js';
+import { notifyStaff } from '../staffbot/staffbot.service.js';
 // Import bilan BIR XIL qoida — aks holda bazadagi raqam bilan mos kelmaydi.
 import { normalizePhone } from '../../utils/phone.js';
 
@@ -47,6 +48,19 @@ interface TgUpdate {
 
 const ASK_CONTACT = {
   keyboard: [[{ text: '📱 Raqamni yuborish', request_contact: true }]],
+  resize_keyboard: true,
+  one_time_keyboard: true,
+};
+
+/**
+ * Tasdiqlash tugmalari ODDIY klaviatura (inline emas): inline tugma
+ * `callback_query` yuboradi, webhook esa faqat `message` ga o'rnatilgan.
+ * Allaqachon ulangan maktablarda tugma jimgina ishlamay qolardi.
+ */
+const YES = "✅ Ha, bu mening farzandim";
+const NO = "❌ Yo'q, bu mening farzandim emas";
+const ASK_CONFIRM = {
+  keyboard: [[{ text: YES }], [{ text: NO }]],
   resize_keyboard: true,
   one_time_keyboard: true,
 };
@@ -154,29 +168,98 @@ telegramRoutes.post(
       }
 
       const parent = found.rows[0];
+      const kids = await childrenOf(parent.parent_id);
+
+      // Raqam mos kelgani yetarli emas: raqam boshqa odamga o'tib ketgan yoki
+      // ro'yxatga xato yozilgan bo'lishi mumkin. Shuning uchun chat
+      // bog'lanadi, lekin ota-ona farzandini TASDIQLAGUNCHA xabar ketmaydi.
       await pool.query(
         `UPDATE parent_phones
-            SET telegram_chat_id = $2, telegram_verified_at = now(), notify_enabled = true
+            SET telegram_chat_id = $2,
+                telegram_verified_at = CASE WHEN $3 THEN NULL ELSE now() END,
+                telegram_rejected_at = NULL,
+                notify_enabled = NOT $3
           WHERE id = $1`,
-        [parent.id, chatId],
+        [parent.id, chatId, kids.length > 0],
       );
 
-      const kids = await pool.query<{ name: string }>(
-        `SELECT s.last_name || ' ' || s.first_name AS name
-           FROM student_parents sp
-           JOIN students s ON s.id = sp.student_id
-          WHERE sp.parent_id = $1 AND s.status = 'active'
-          ORDER BY s.last_name`,
-        [parent.parent_id],
-      );
+      if (!kids.length) {
+        // Tasdiqlaydigan narsa yo'q — farzand ro'yxatga qo'shilgach keladi.
+        await say(
+          token, chatId,
+          `✅ Ulandingiz, ${parent.full_name}.\n\n` +
+          `Farzandingiz ro'yxatga qo'shilgach xabarlar shu yerga keladi.`,
+          { remove_keyboard: true },
+        );
+        res.sendStatus(200);
+        return;
+      }
 
       await say(
         token, chatId,
-        `✅ Ulandingiz, ${parent.full_name}.\n\n` +
-        (kids.rowCount
-          ? `Farzandlaringiz:\n${kids.rows.map((k) => `• ${k.name}`).join('\n')}\n\n` +
-            `Davomat va to'lov haqidagi xabarlar shu yerga keladi.`
-          : `Farzandingiz ro'yxatga qo'shilgach xabarlar shu yerga keladi.`),
+        `Assalomu alaykum, ${parent.full_name}.\n\n` +
+        (kids.length === 1 ? 'Sizning farzandingiz:' : 'Sizning farzandlaringiz:') +
+        `\n\n${kids.map(childCard).join('\n\n')}\n\n` +
+        `<b>Ma'lumotlar to'g'rimi — haqiqatan ham sizning farzandingizmi?</b>`,
+        ASK_CONFIRM,
+      );
+      res.sendStatus(200);
+      return;
+    }
+
+    // ---------------------------------------------------- tasdiq: Ha / Yo'q
+    const answer = confirmAnswer(msg.text);
+    if (answer) {
+      // Tasdiq kutayotgan raqam chat bo'yicha topiladi.
+      const { rows: pending } = await pool.query<PendingPhone>(
+        `SELECT pp.id, pp.parent_id, pp.school_id, pp.phone, p.full_name
+           FROM parent_phones pp JOIN parents p ON p.id = pp.parent_id
+          WHERE pp.telegram_chat_id = $1 AND pp.telegram_verified_at IS NULL`,
+        [chatId],
+      );
+      const pp = pending[0];
+      if (!pp) {
+        // Tugma eski xabardan bosilgan bo'lishi mumkin.
+        await say(
+          token, chatId,
+          "Tasdiqlash kutilayotgan ma'lumot yo'q. Boshlash uchun /start yuboring.",
+          { remove_keyboard: true },
+        );
+        res.sendStatus(200);
+        return;
+      }
+
+      if (answer === 'yes') {
+        await pool.query(
+          `UPDATE parent_phones
+              SET telegram_verified_at = now(), telegram_rejected_at = NULL,
+                  notify_enabled = true
+            WHERE id = $1`,
+          [pp.id],
+        );
+        await say(
+          token, chatId,
+          `✅ Rahmat, ${pp.full_name}. Ma'lumot tasdiqlandi.\n\n` +
+          `Endi davomat, to'lov va kutubxona haqidagi xabarlar shu yerga keladi.`,
+          { remove_keyboard: true },
+        );
+        res.sendStatus(200);
+        return;
+      }
+
+      // "Yo'q" — xabar yuborilmaydi va ma'muriyat ogohlantiriladi.
+      await pool.query(
+        `UPDATE parent_phones
+            SET telegram_rejected_at = now(), telegram_verified_at = NULL,
+                notify_enabled = false
+          WHERE id = $1`,
+        [pp.id],
+      );
+      await alertStaffAboutMismatch(pp);
+      await say(
+        token, chatId,
+        `Rahmat. Ma'lumot maktab ma'muriyatiga yuborildi — ular siz bilan bog'lanishadi.\n\n` +
+        `Sizga hech qanday xabar yuborilmaydi.`,
         { remove_keyboard: true },
       );
       res.sendStatus(200);
@@ -186,3 +269,51 @@ telegramRoutes.post(
     res.sendStatus(200);
   }),
 );
+
+interface PendingPhone {
+  id: string;
+  parent_id: string;
+  school_id: string;
+  phone: string;
+  full_name: string;
+}
+
+/** Tugma matni yoki oddiy "ha" / "yo'q" — ikkalasi ham qabul qilinadi. */
+function confirmAnswer(text?: string): 'yes' | 'no' | null {
+  if (!text) return null;
+  const t = text.trim().toLowerCase();
+  if (t.startsWith('✅') || t === 'ha' || t.startsWith('ha,')) return 'yes';
+  if (t.startsWith('❌') || t === "yo'q" || t === 'yoq' || t.startsWith("yo'q,")) return 'no';
+  return null;
+}
+
+/**
+ * "Bu mening farzandim emas" — ma'muriyat uchun ogohlantirish.
+ *
+ * Ikki joyga ketadi: xizmat boti (darhol ko'rinadi) va "Xabarlar" bo'limi
+ * (bot ulanmagan bo'lsa ham yozuv qoladi). Ma'lumot tuzatilmaguncha bu
+ * raqamga hech qanday xabar yuborilmaydi.
+ */
+async function alertStaffAboutMismatch(pp: PendingPhone): Promise<void> {
+  const kids = await childrenOf(pp.parent_id);
+  const names = kids.map((k) => k.name).join(', ') || 'farzand biriktirilmagan';
+  const text =
+    `⚠️ <b>Ota-ona ma'lumotni tasdiqlamadi</b>\n` +
+    `${pp.full_name} (${pp.phone}) botda "bu mening farzandim emas" dedi.\n` +
+    `Biriktirilgan o'quvchi: ${names}\n\n` +
+    `Raqam yoki biriktirish xato bo'lishi mumkin — tekshirib ko'ring. ` +
+    `Tuzatilgunga qadar bu raqamga xabar yuborilmaydi.`;
+
+  // Xabar ketmasa ham webhook yiqilmasligi kerak.
+  void notifyStaff(pp.school_id, text);
+
+  // Yozuv "Xabarlar" ro'yxatida qoladi. `inapp` Telegram navbatiga tushmaydi,
+  // shuning uchun darhol 'sent'.
+  await pool.query(
+    `INSERT INTO notifications
+       (school_id, parent_id, parent_phone_id, student_id, channel, kind, body, status, sent_at)
+     VALUES ($1, $2, $3, $4, 'inapp', 'parent.link.rejected', $5, 'sent', now())`,
+    [pp.school_id, pp.parent_id, pp.id, kids[0]?.id ?? null,
+     `${pp.full_name} (${pp.phone}) farzand ma'lumotini tasdiqlamadi: ${names}`],
+  );
+}

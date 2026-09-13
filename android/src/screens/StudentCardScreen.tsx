@@ -5,7 +5,7 @@ import { api, perms, type AuthedUser } from '../api';
 import { fmtDate, fmtPhone, initials, money, monthLabel } from '../format';
 import { ListItem, Tile, invoiceKind } from '../forms';
 import { useTheme } from '../theme';
-import { AppBar, Avatar, BigButton, ErrorState, Icon, Pill, SectionLabel, Skeleton, ThumbZone } from '../ui';
+import { AppBar, Avatar, BigButton, ErrorState, Icon, Pill, SectionLabel, Skeleton, ThumbZone, type IconName, type StatusKind } from '../ui';
 import { ArchiveSheet, EditClassSheet, EditInfoSheet } from './StudentForms';
 import { StudentBooks } from './LibraryForms';
 
@@ -20,7 +20,7 @@ interface CardData {
   parents: Array<{
     id: string; full_name: string; relation: string | null; is_primary: boolean;
     phone?: string; telegram_linked?: boolean;
-    phones?: Array<{ id: string; phone: string; isPrimary: boolean; telegramLinked: boolean; notifyEnabled: boolean }>;
+    phones?: Array<{ id: string; phone: string; isPrimary: boolean; telegramLinked: boolean; telegramState?: string; notifyEnabled: boolean }>;
   }>;
   finance: { invoiced: number; paid: number; outstanding: number; advance: number };
 }
@@ -137,17 +137,16 @@ export function StudentCardScreen({ id, user, onBack, onPay, onArchived }: {
           ) : (
             card.data.parents.map((pr, idx) => {
               const phones = pr.phones ?? (pr.phone ? [{ phone: pr.phone, telegramLinked: !!pr.telegram_linked }] : []);
-              // Botga ulanmagan ota-onaga xabar bormaydi — buni shu yerda ko'rsatmasak "nega xabar kelmadi?" javobsiz qoladi.
-              const linked = phones.some((x) => x.telegramLinked);
+              // Botga ulanmagan yoki farzandini tasdiqlamagan ota-onaga xabar bormaydi —
+              // buni shu yerda ko'rsatmasak "nega xabar kelmadi?" javobsiz qoladi.
+              const tg = telegramPill(phones);
               return (
                 <ListItem
                   key={pr.id}
                   title={`${pr.full_name}${pr.is_primary ? ' · asosiy' : ''}`}
                   sub={[pr.relation ? REL[pr.relation] ?? pr.relation : null, ...phones.map((x) => fmtPhone(x.phone))].filter(Boolean).join(' · ')}
                   left={<Avatar text={initials(pr.full_name)} />}
-                  right={linked
-                    ? <Pill kind="good" icon="check" label="Telegram" />
-                    : <Pill kind="warn" icon="clock" label="Botga ulanmagan" />}
+                  right={<Pill kind={tg.kind} icon={tg.icon} label={tg.label} />}
                   last={idx === card.data.parents.length - 1}
                 />
               );
@@ -180,9 +179,25 @@ export function StudentCardScreen({ id, user, onBack, onPay, onArchived }: {
         <>
           <EditInfoSheet key={`i${card.dataUpdatedAt}`} s={s} open={editing === 'info'} onClose={() => setEditing(null)} />
           <EditClassSheet key={`c${card.dataUpdatedAt}`} s={s} open={editing === 'class'} onClose={() => setEditing(null)} />
-          <ArchiveSheet id={s.id} name={fullName} open={editing === 'archive'} onClose={() => setEditing(null)} onDone={() => { setEditing(null); onArchived(); }} />
+          <ArchiveSheet id={s.id} name={fullName} admin={p.admin} open={editing === 'archive'} onClose={() => setEditing(null)} onDone={() => { setEditing(null); onArchived(); }} />
         </>
       )}
     </View>
   );
+}
+
+/**
+ * Ota-onaning Telegram holati (web `Guardians.tsx` bilan bir xil).
+ *
+ * "Tasdiqlamadi" eng muhimi: ota-ona botda "bu mening farzandim emas" degan,
+ * ya'ni raqam yoki biriktirish xato va xabar yuborilmayapti.
+ */
+function telegramPill(
+  phones: Array<{ telegramLinked: boolean; telegramState?: string }>,
+): { kind: StatusKind; icon: IconName; label: string } {
+  const has = (st: string) => phones.some((x) => (x.telegramState ?? (x.telegramLinked ? 'confirmed' : 'none')) === st);
+  if (has('confirmed')) return { kind: 'good', icon: 'check', label: 'Telegram' };
+  if (has('rejected')) return { kind: 'crit', icon: 'alert-triangle', label: 'Tasdiqlamadi' };
+  if (has('pending')) return { kind: 'warn', icon: 'clock', label: 'Tasdiq kutilmoqda' };
+  return { kind: 'warn', icon: 'clock', label: 'Botga ulanmagan' };
 }

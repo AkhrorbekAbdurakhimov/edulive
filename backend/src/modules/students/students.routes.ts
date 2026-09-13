@@ -8,7 +8,9 @@ import { getCurrentYear, getSchoolSettings } from '../schools/schools.service.js
 import { assertClassAccess } from '../classes/classes.service.js';
 import { conflict, forbidden, notFound } from '../../utils/errors.js';
 import { ah } from '../../utils/http.js';
-import { guardiansOf, linkGuardian, addPhones, normalizePhones, MAX_PHONES } from './students.service.js';
+import {
+  guardiansOf, linkGuardian, addPhones, normalizePhones, leavingDebt, MAX_PHONES,
+} from './students.service.js';
 import { parse, uuidParam } from '../../utils/validate.js';
 import { normalizePhone, PHONE_HINT } from '../../utils/phone.js';
 
@@ -417,6 +419,24 @@ studentsRoutes.patch(
  * o'qilgan kunlarga qarab qayta hisoblanadi — aks holda 5-noyabrda ketgan
  * bolaga to'liq noyabr qarz bo'lib qolardi.
  */
+/**
+ * Chiqarishdan OLDIN qarzni ko'rsatadi.
+ *
+ * Oyna ochilishi bilan so'raladi: tugmani bosib xato olishdan ko'ra, qaysi
+ * kitob va qancha pul qolganini darrov ko'rsatgan ma'qul.
+ */
+studentsRoutes.get(
+  '/:id/leaving-check',
+  requireRole('admin', 'manager'),
+  ah(async (req, res) => {
+    const id = uuidParam(req);
+    const { rowCount } = await pool.query(
+      `SELECT 1 FROM students WHERE id = $1 AND school_id = $2`, [id, req.schoolId]);
+    if (!rowCount) throw notFound("O'quvchi topilmadi");
+    res.json(await leavingDebt(pool, req.schoolId!, id));
+  }),
+);
+
 studentsRoutes.post(
   '/:id/archive',
   requireRole('admin', 'manager'),
@@ -428,11 +448,23 @@ studentsRoutes.post(
         // Ketgan sana — o'tmishda bo'lishi mumkin (hujjat keyinroq rasmiylashadi).
         endsOn: dateStr.optional(),
         reason: z.string().max(1000).optional(),
+        // Qarzni bilib turib chiqarish — faqat maktab admini, auditga yoziladi.
+        force: z.boolean().default(false),
       }),
       req.body ?? {},
     );
 
     const result = await tx(async (client) => {
+      // Qarzli o'quvchi chiqib ketsa, kitob ham, pul ham qaytmaydi.
+      const debt = await leavingDebt(client, req.schoolId!, id);
+      if (debt.blocked) {
+        if (!input.force) throw conflict(debt.message!, 'student_debt');
+        // Chegarani faqat admin ochadi: menejer qarzni "kechira" olmaydi.
+        if (req.user!.role === 'manager') {
+          throw forbidden("Qarzi bor o'quvchini faqat maktab admini chiqara oladi");
+        }
+      }
+
       const { rows } = await client.query(
         `UPDATE students SET status = $4, note = COALESCE($3, note), updated_at = now()
           WHERE id = $1 AND school_id = $2 AND status = 'active'
@@ -486,11 +518,21 @@ studentsRoutes.post(
           action: 'student.archive',
           entity: 'student',
           entityId: id,
-          after: { status: input.status, endsOn, reason: input.reason ?? null, recalculated },
+          after: {
+            status: input.status, endsOn, reason: input.reason ?? null, recalculated,
+            // Qarz bilan chiqarilgan bo'lsa — kim, qancha qarzni bilib turib
+            // yopganini keyin ko'rsatish uchun (2-qoida).
+            ...(debt.blocked
+              ? {
+                  forced: true, overdue: debt.overdue,
+                  outstanding: debt.outstanding, books: debt.books.length,
+                }
+              : {}),
+          },
         },
         client,
       );
-      return { recalculated };
+      return { recalculated, forced: debt.blocked };
     });
 
     res.json({ ok: true, ...result });

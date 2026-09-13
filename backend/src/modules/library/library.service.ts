@@ -6,11 +6,18 @@
  * vaqtda bir donani bermoqchi bo'lsa, ikkinchisi bazadan rad javob oladi.
  */
 import type { PoolClient } from 'pg';
-import { pool } from '../../db/pool.js';
+import { pool, type Db } from '../../db/pool.js';
 import { badRequest, conflict, notFound } from '../../utils/errors.js';
 
 /** Sozlamada boshqacha yozilmagan bo'lsa, kitob shuncha kunga beriladi. */
 export const DEFAULT_LOAN_DAYS = 14;
+
+/**
+ * Sozlamada boshqacha yozilmagan bo'lsa, o'quvchida bir vaqtda shuncha kitob
+ * bo'ladi. Sukut — 1: bolada bitta kitob, qaytarmaguncha yangisi berilmaydi.
+ * Maktab boshqacha ishlasa `schools.settings` da o'zgartiradi, kodda emas.
+ */
+export const DEFAULT_MAX_LOANS = 1;
 
 export async function loanDays(schoolId: string): Promise<number> {
   const { rows } = await pool.query<{ d: number | null }>(
@@ -19,6 +26,72 @@ export async function loanDays(schoolId: string): Promise<number> {
   );
   const d = rows[0]?.d;
   return d && d > 0 ? d : DEFAULT_LOAN_DAYS;
+}
+
+/** Bir o'quvchi qo'lida bir vaqtda nechta kitob bo'lishi mumkin. */
+export async function maxLoans(schoolId: string, client: Db = pool): Promise<number> {
+  const { rows } = await client.query<{ n: number | null }>(
+    `SELECT (settings->>'library_max_books_per_student')::int AS n
+       FROM schools WHERE id = $1`,
+    [schoolId],
+  );
+  const n = rows[0]?.n;
+  return n && n > 0 ? n : DEFAULT_MAX_LOANS;
+}
+
+export interface ActiveLoan {
+  id: string;
+  issued_on: string;
+  due_on: string;
+  overdue: boolean;
+  days_late: number;
+  book_id: string;
+  title: string;
+  author: string | null;
+  inventory_no: string;
+  student_id: string;
+  student_name: string;
+}
+
+/** O'quvchi qo'lidagi (hali qaytarilmagan) kitoblar — muddati o'tgani birinchi. */
+export async function activeLoans(
+  client: Db,
+  schoolId: string,
+  studentId: string,
+): Promise<ActiveLoan[]> {
+  const { rows } = await client.query<ActiveLoan>(
+    `SELECT l.id, l.issued_on, l.due_on, l.book_id,
+            (l.due_on < CURRENT_DATE) AS overdue,
+            GREATEST(0, CURRENT_DATE - l.due_on)::int AS days_late,
+            b.title, b.author, c.inventory_no,
+            s.id AS student_id, s.last_name || ' ' || s.first_name AS student_name
+       FROM book_loans l
+       JOIN books b ON b.id = l.book_id
+       JOIN book_copies c ON c.id = l.copy_id
+       JOIN students s ON s.id = l.student_id AND s.school_id = l.school_id
+      WHERE l.school_id = $1 AND l.student_id = $2 AND l.status = 'issued'
+      ORDER BY l.due_on`,
+    [schoolId, studentId],
+  );
+  return rows;
+}
+
+/**
+ * Kutubxonachiga ko'rinadigan ogohlantirish matni: qaysi kitob kimda turibdi.
+ *
+ * Bitta kitob chegarasida ism-sharif emas, kitob nomi muhim — kutubxonachi
+ * bolani oldida ko'rib turibdi, unga "qaysi kitobni olib kel" deyishi kerak.
+ */
+export function loanLimitMessage(held: ActiveLoan[], limit: number): string {
+  const one = held[0];
+  const late = one?.overdue ? ` — ${one.days_late} kun kechikkan` : '';
+  // Chegara 1 bo'lsa ham qo'lida bir nechta kitob bo'lishi mumkin (sozlama
+  // keyin pasaytirilgan bo'lsa) — shunda nomini emas, sonini aytamiz.
+  return held.length === 1 && one
+    ? `Bu o'quvchi hozir "${one.title}" kitobini o'qiyapti (${one.inventory_no})${late}. `
+      + 'Avval shu kitobni qabul qiling, keyin yangisini bering.'
+    : `Bu o'quvchida allaqachon ${held.length} ta kitob bor — chegara ${limit} ta. `
+      + 'Avval birortasini qabul qiling.';
 }
 
 /** Bugundan `days` kun keyingi sana, YYYY-MM-DD. */
@@ -49,11 +122,19 @@ export async function issueBook(
   userId: string,
   input: IssueInput,
 ) {
+  // FOR UPDATE — o'quvchi qatorini band qilamiz: ikki kutubxonachi bir vaqtda
+  // bir bolaga kitob bermoqchi bo'lsa, chegara tekshiruvi chetlab o'tilmaydi.
   const student = await client.query(
-    `SELECT 1 FROM students WHERE id = $1 AND school_id = $2 AND status = 'active'`,
+    `SELECT 1 FROM students WHERE id = $1 AND school_id = $2 AND status = 'active'
+      FOR UPDATE`,
     [input.studentId, schoolId],
   );
   if (!student.rowCount) throw notFound("O'quvchi topilmadi yoki faol emas");
+
+  // Qo'lida kitobi borga yangisi berilmaydi — kutubxonachi ogohlantiriladi.
+  const limit = await maxLoans(schoolId, client);
+  const held = await activeLoans(client, schoolId, input.studentId);
+  if (held.length >= limit) throw conflict(loanLimitMessage(held, limit), 'loan_limit');
 
   const { rows: copies } = input.copyId
     ? await client.query<{ id: string; book_id: string; status: string; condition: string }>(

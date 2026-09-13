@@ -5,7 +5,7 @@ import { api, qs } from '../api';
 import { fmtDateTime, fmtPhone } from '../format';
 import { Chips, ListItem } from '../forms';
 import { useTheme } from '../theme';
-import { AppBar, BigButton, Card, EmptyState, ErrorState, Pill, Skeleton, type StatusKind } from '../ui';
+import { Alarm, AppBar, BigButton, Card, EmptyState, ErrorState, Pill, Skeleton, type IconName, type StatusKind } from '../ui';
 
 interface Row {
   id: string; kind: string; status: string; body: string | null;
@@ -21,6 +21,8 @@ const KIND_LABEL: Record<string, string> = {
   'attendance.late': 'Darsga kechikdi',
   'attendance.present': 'Darsga keldi',
   'debt.reminder': 'Qarz eslatmasi',
+  // Ota-ona botda "bu mening farzandim emas" dedi — tekshirish kerak.
+  'parent.link.rejected': "Ota-ona ma'lumotni tasdiqlamadi",
 };
 
 function statusOf(s: string): { kind: StatusKind; label: string } {
@@ -100,8 +102,12 @@ interface TgInfo {
   bot: string | null;
   ownBot: boolean;
   inviteLink: string | null;
-  parents: { total: number; connected: number };
-  pending: Array<{ id: string; full_name: string; phone: string; students: string | null }>;
+  parents: { total: number; connected: number; waiting: number; rejected: number };
+  pending: Array<{
+    id: string; full_name: string; phone: string; students: string | null;
+    /** none — botni ochmagan · pending — tasdiq kutilmoqda · rejected — tasdiqlamadi */
+    state: 'none' | 'pending' | 'rejected';
+  }>;
 }
 
 /**
@@ -138,8 +144,15 @@ function InviteCard() {
         <Pill kind={left === 0 ? 'good' : 'warn'} icon={left === 0 ? 'check' : 'clock'} label={`${d.parents.connected} / ${d.parents.total} ulangan`} />
       </View>
       <Text style={{ fontSize: 13, color: c.t2, lineHeight: 19 }}>
-        Xabar faqat botga ulangan ota-onaga boradi. Havolani ota-onalarga yuboring: ular botni ochib telefon raqamini tasdiqlaydi.
+        Xabar faqat botga ulangan ota-onaga boradi. Havolani ota-onalarga yuboring: ular botni ochib telefon raqamini tasdiqlaydi, so'ng bot farzandi ma'lumotini ko'rsatib "Ha / Yo'q" deb so'raydi.
       </Text>
+      {d.parents.rejected > 0 && (
+        <Alarm title={`${d.parents.rejected} ta ota-ona "bu mening farzandim emas" dedi`}>
+          <Text style={{ fontSize: 13, color: c.t2 }}>
+            Raqam yoki biriktirish xato bo'lishi mumkin — ro'yxatda "Tasdiqlamadi" deb turganlarni tekshiring. Tuzatilgunga qadar ularga xabar yuborilmaydi.
+          </Text>
+        </Alarm>
+      )}
       <Text style={{ fontSize: 12, color: c.brandInk, fontVariant: ['tabular-nums'] }} selectable>{d.inviteLink}</Text>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <View style={{ flex: 1 }}><BigButton title="Ulashish" icon="share-2" height={44} onPress={share} /></View>
@@ -150,12 +163,28 @@ function InviteCard() {
       )}
       {left > 0 && (
         <>
-          <BigButton title={open ? 'Yashirish' : `Ulanmagan ${left} ta ota-onani ko'rish`} variant="secondary" height={40} onPress={() => setOpen((v) => !v)} />
-          {open && d.pending.map((p, i) => (
-            <ListItem key={p.id} title={p.full_name} sub={`${fmtPhone(p.phone)}${p.students ? ` · ${p.students}` : ''}`} last={i === d.pending.length - 1} />
-          ))}
+          <BigButton title={open ? 'Yashirish' : `Xabar bormaydigan ${left} ta raqamni ko'rish`} variant="secondary" height={40} onPress={() => setOpen((v) => !v)} />
+          {open && d.pending.map((p, i) => {
+            const st = LINK_STATE[p.state] ?? LINK_STATE.none;
+            return (
+              <ListItem
+                key={p.id}
+                title={p.full_name}
+                sub={`${fmtPhone(p.phone)}${p.students ? ` · ${p.students}` : ''}`}
+                right={<Pill kind={st.kind} icon={st.icon} label={st.label} />}
+                last={i === d.pending.length - 1}
+              />
+            );
+          })}
         </>
       )}
     </Card>
   );
 }
+
+/** Raqamga nega xabar bormayotgani — rang yolg'iz emas, ikonka + so'z. */
+const LINK_STATE: Record<string, { kind: StatusKind; icon: IconName; label: string }> = {
+  rejected: { kind: 'crit', icon: 'alert-triangle', label: 'Tasdiqlamadi' },
+  pending: { kind: 'warn', icon: 'clock', label: 'Tasdiq kutilmoqda' },
+  none: { kind: 'neutral', icon: 'x', label: 'Botni ochmagan' },
+};

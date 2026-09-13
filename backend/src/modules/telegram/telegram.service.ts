@@ -10,6 +10,7 @@ import { pool, type Db } from '../../db/pool.js';
 import { env } from '../../config/env.js';
 import { open } from '../../utils/secretbox.js';
 import { badRequest } from '../../utils/errors.js';
+import { uzSum } from '../../utils/money.js';
 
 const API = 'https://api.telegram.org';
 
@@ -113,4 +114,64 @@ export async function sendToParent(
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------- farzand kartochkasi
+
+export interface ChildInfo {
+  id: string;
+  name: string;
+  class_name: string | null;
+  birth_date: string | null;
+  monthly_fee: number | null;
+  discount_percent: number | null;
+}
+
+/** Ota-onaga biriktirilgan faol o'quvchilar — tasdiqlash kartochkasi uchun. */
+export async function childrenOf(parentId: string, db: Db = pool): Promise<ChildInfo[]> {
+  const { rows } = await db.query<ChildInfo>(
+    `SELECT s.id,
+            s.last_name || ' ' || s.first_name
+              || COALESCE(' ' || s.middle_name, '') AS name,
+            c.grade || '-' || c.letter AS class_name,
+            s.birth_date::text AS birth_date,
+            COALESCE(e.monthly_fee, c.monthly_fee) AS monthly_fee,
+            e.discount_percent
+       FROM student_parents sp
+       JOIN students s ON s.id = sp.student_id
+       LEFT JOIN enrollments e ON e.student_id = s.id AND e.ends_on IS NULL
+       LEFT JOIN classes c ON c.id = e.class_id
+      WHERE sp.parent_id = $1 AND s.status = 'active'
+      ORDER BY s.last_name, s.first_name`,
+    [parentId],
+  );
+  return rows;
+}
+
+/** 2010-07-17 -> 17.07.2010 */
+function uzDate(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return `${d}.${m}.${y}`;
+}
+
+/**
+ * Farzand haqidagi ma'lumot — ota-ona shuni o'qib tasdiqlaydi.
+ *
+ * Chegirmadan keyingi summa ko'rsatiladi: ota-ona haqiqatda to'laydigan pul
+ * shu. To'lanmagan hisob yoki qarz bu yerda ATAYLAB ko'rsatilmaydi — raqam
+ * hali tasdiqlanmagan, ya'ni bu odam begona bo'lishi mumkin.
+ */
+export function childCard(c: ChildInfo): string {
+  const lines = [`👤 <b>${c.name}</b>`];
+  lines.push(c.class_name ? `🏫 ${c.class_name} sinf o'quvchisi` : '🏫 Sinfga biriktirilmagan');
+  if (c.birth_date) lines.push(`🎂 ${uzDate(c.birth_date)} da tug'ilgan`);
+  if (c.monthly_fee != null) {
+    const fee = Number(c.monthly_fee);
+    const disc = Number(c.discount_percent ?? 0);
+    const net = Math.round(fee - (fee * disc) / 100);
+    lines.push(
+      `💰 Oylik to'lov: ${uzSum(net)}` + (disc > 0 ? ` (${disc}% chegirma bilan)` : ''),
+    );
+  }
+  return lines.join('\n');
 }

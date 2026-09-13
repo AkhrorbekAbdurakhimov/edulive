@@ -17,6 +17,8 @@ const KIND_LABEL: Record<string, string> = {
   'attendance.absent': 'Darsga kelmadi',
   'attendance.present': 'Darsga keldi',
   'debt.reminder': 'Qarz eslatmasi',
+  // Ota-ona botda "bu mening farzandim emas" dedi — tekshirish kerak.
+  'parent.link.rejected': "Ota-ona ma'lumotni tasdiqlamadi",
 };
 
 /** Rang yolg'iz ma'no tashimaydi — har doim ikonka + so'z. */
@@ -137,8 +139,12 @@ interface TgInfo {
   bot: string | null;
   ownBot: boolean;
   inviteLink: string | null;
-  parents: { total: number; connected: number };
-  pending: Array<{ id: string; full_name: string; phone: string; students: string | null }>;
+  parents: { total: number; connected: number; waiting: number; rejected: number };
+  pending: Array<{
+    id: string; full_name: string; phone: string; students: string | null;
+    /** none — botni ochmagan · pending — tasdiq kutilmoqda · rejected — tasdiqlamadi */
+    state: 'none' | 'pending' | 'rejected';
+  }>;
 }
 
 /**
@@ -205,9 +211,26 @@ function InviteCard() {
 
       <p className="muted" style={{ marginTop: 0 }}>
         Xabar faqat botga ulangan ota-onaga boradi. Quyidagi havolani ota-onalarga
-        yuboring: ular botni ochib, telefon raqamini tasdiqlaydi va raqam maktab
-        ro'yxatidagi raqamga mos kelsa avtomatik ulanadi.
+        yuboring: ular botni ochib, telefon raqamini tasdiqlaydi, so'ng bot
+        farzandining ma'lumotini ko'rsatadi va "Ha / Yo'q" deb so'raydi.
       </p>
+
+      {d.parents.rejected > 0 && (
+        <div className="alarm" role="alert">
+          {/* Rang yolg'iz ma'no tashimaydi — ikonka va so'z birga. */}
+          <span className="alarm-icon" aria-hidden>⚠</span>
+          <div>
+            <strong>
+              {d.parents.rejected} ta ota-ona "bu mening farzandim emas" dedi
+            </strong>
+            <span>
+              Raqam yoki biriktirish xato bo'lishi mumkin — pastdagi ro'yxatda
+              "Tasdiqlamadi" deb turganlarni tekshiring. Tuzatilgunga qadar ularga
+              xabar yuborilmaydi.
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="row" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
         <code className="invite-link">{d.inviteLink}</code>
@@ -232,12 +255,14 @@ function InviteCard() {
             type="button" className="btn btn-ghost sm" style={{ marginTop: 10 }}
             onClick={() => setOpen((v) => !v)}
           >
-            {open ? 'Yashirish' : `Ulanmagan ${left} ta ota-onani ko'rish`}
+            {open ? 'Yashirish' : `Xabar bormaydigan ${left} ta raqamni ko'rish`}
           </button>
           {open && (
             <div className="table-wrap" style={{ marginTop: 8 }}>
               <table className="tbl">
-                <thead><tr><th>Ota-ona</th><th>Telefon</th><th>Farzandi</th></tr></thead>
+                <thead>
+                  <tr><th>Ota-ona</th><th>Telefon</th><th>Farzandi</th><th>Holat</th></tr>
+                </thead>
                 <tbody>
                   {d.pending.map((p) => (
                     <tr key={p.id}>
@@ -245,6 +270,13 @@ function InviteCard() {
                       <td data-label="Telefon" className="num">{p.phone}</td>
                       <td data-label="Farzandi">
                         {p.students ?? <span className="muted">—</span>}
+                      </td>
+                      <td data-label="Holat">
+                        {p.state === 'rejected'
+                          ? <Chip kind="crit">Tasdiqlamadi</Chip>
+                          : p.state === 'pending'
+                            ? <Chip kind="warn">Tasdiq kutilmoqda</Chip>
+                            : <Chip kind="neutral">Botni ochmagan</Chip>}
                       </td>
                     </tr>
                   ))}

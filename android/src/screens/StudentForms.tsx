@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Text } from 'react-native';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import { fmtNum, maskUzDate, parseAmount, parseUzDate, fmtDate } from '../format';
-import { ErrorText, FormSheet, Help, MoneyField, Select } from '../forms';
+import { fmtNum, maskUzDate, money, parseAmount, parseUzDate, fmtDate } from '../format';
+import { ErrorText, FormSheet, Help, MoneyField, Select, Toggle } from '../forms';
 import { useClasses } from '../queries';
 import { useTheme } from '../theme';
-import { BigButton, Field } from '../ui';
+import { Alarm, BigButton, Field } from '../ui';
 
 /**
  * O'quvchini tahrirlash oynalari — backenddagi uchta endpointga 1:1 mos
@@ -149,12 +149,38 @@ export function EditClassSheet({ s, open, onClose }: { s: EditableStudent; open:
   );
 }
 
-export function ArchiveSheet({ id, name, open, onClose, onDone }: { id: string; name: string; open: boolean; onClose: () => void; onDone: () => void }) {
+/** Chiqarishga to'sqinlik qiladigan qarzlar — GET /students/:id/leaving-check. */
+export interface LeavingCheck {
+  blocked: boolean;
+  message: string | null;
+  overdue: number;
+  outstanding: number;
+  overdueInvoices: number;
+  books: Array<{
+    id: string; title: string; inventory_no: string;
+    due_on: string; overdue: boolean; days_late: number;
+  }>;
+}
+
+export function ArchiveSheet({ id, name, admin, open, onClose, onDone }: { id: string; name: string; admin: boolean; open: boolean; onClose: () => void; onDone: () => void }) {
   const c = useTheme();
   const qc = useQueryClient();
   const [reason, setReason] = useState('');
+  const [force, setForce] = useState(false);
+
+  // Qarz oyna ochilishi bilan ko'rinadi — tugmani bosib xato olishdan oldin.
+  const debt = useQuery({
+    queryKey: ['leaving-check', id],
+    enabled: open,
+    queryFn: () => api<LeavingCheck>(`/students/${id}/leaving-check`),
+  });
+  const blocked = debt.data?.blocked ?? false;
+
   const archive = useMutation({
-    mutationFn: () => api(`/students/${id}/archive`, 'POST', { reason: reason.trim() || undefined }),
+    mutationFn: () => api(`/students/${id}/archive`, 'POST', {
+      reason: reason.trim() || undefined,
+      ...(blocked ? { force: true } : {}),
+    }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['students'] }); onDone(); },
   });
 
@@ -166,7 +192,7 @@ export function ArchiveSheet({ id, name, open, onClose, onDone }: { id: string; 
       sub={name}
       footer={
         <>
-          <BigButton title={archive.isPending ? 'Arxivlanmoqda…' : 'Arxivlash'} variant="danger" onPress={() => archive.mutate()} busy={archive.isPending} />
+          <BigButton title={archive.isPending ? 'Arxivlanmoqda…' : 'Arxivlash'} variant="danger" onPress={() => archive.mutate()} busy={archive.isPending} disabled={debt.isPending || (blocked && !force)} />
           <BigButton title="Bekor qilish" variant="secondary" height={44} onPress={onClose} />
         </>
       }
@@ -174,7 +200,43 @@ export function ArchiveSheet({ id, name, open, onClose, onDone }: { id: string; 
       <Text style={{ fontSize: 13, color: c.t2, lineHeight: 19 }}>
         Ro'yxatdan chiqadi va sinfdagi biriktirish yopiladi. Hisoblari va to'lovlari saqlanib qoladi — o'chirilmaydi.
       </Text>
+
+      {blocked && debt.data ? (
+        <Alarm title="Qarzi bor — avval yopilishi kerak">
+          {debt.data.books.map((b) => (
+            <Text key={b.id} style={{ fontSize: 13, color: c.t2 }}>
+              Qaytarilmagan kitob: {b.title} · {b.inventory_no} · muddat {fmtDate(b.due_on)}
+              {b.overdue ? ` · ${b.days_late} kun kechikdi` : ''}
+            </Text>
+          ))}
+          {debt.data.overdue > 0 && (
+            <Text style={{ fontSize: 13, color: c.t2 }}>
+              To'lanmagan hisob: {money(debt.data.overdue)} ({debt.data.overdueInvoices} ta oy)
+            </Text>
+          )}
+          <Text style={{ fontSize: 12, color: c.t3 }}>
+            Kitob qaytarilsa va qarz to'lansa, chiqarish ochiladi.
+          </Text>
+        </Alarm>
+      ) : null}
+
+      {!blocked && (debt.data?.outstanding ?? 0) > 0 ? (
+        <Help text={`Muddati kelmagan hisob: ${money(debt.data!.outstanding)}. Chiqarilgandan keyin ham qarz saqlanib qoladi.`} />
+      ) : null}
+
       <Field label="Sabab (ixtiyoriy)" value={reason} onChangeText={setReason} />
+
+      {/* Qarzni kechirish emas, istisno: oila shahardan ketib qolgan bo'lishi
+          mumkin. Faqat admin va audit jurnaliga summasi bilan yoziladi. */}
+      {blocked && admin ? (
+        <Toggle
+          label="Qarz bilan chiqarilsin"
+          help="Qarz o'chmaydi — hisob ochiq qoladi. Kim chiqargani audit jurnaliga yoziladi."
+          value={force}
+          onChange={setForce}
+        />
+      ) : null}
+
       <ErrorText text={archive.error?.message} />
     </FormSheet>
   );

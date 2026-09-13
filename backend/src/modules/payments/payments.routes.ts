@@ -8,6 +8,7 @@ import { audit } from '../audit/audit.service.js';
 import { getCurrentYear, getSchoolSettings } from '../schools/schools.service.js';
 import { badRequest, notFound } from '../../utils/errors.js';
 import { ah } from '../../utils/http.js';
+import { uzSum as uz } from '../../utils/money.js';
 import { parse } from '../../utils/validate.js';
 import { notifyStaff } from '../staffbot/staffbot.service.js';
 
@@ -180,11 +181,6 @@ invoicesRoutes.get(
     res.json({ items: rows.map(({ total: _t, ...r }) => r), total: rows[0]?.total ?? 0, page: query.page });
   }),
 );
-
-/** 1200000 -> "1 200 000 so'm". Xabar matnlari uchun. */
-function uz(n: number): string {
-  return `${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} so'm`;
-}
 
 // ================================================================ to'lovlar
 export const paymentsRoutes = Router();
@@ -508,7 +504,8 @@ paymentsRoutes.post(
            JOIN parents p ON p.id = sp.parent_id
            JOIN parent_phones pp ON pp.parent_id = p.id
           WHERE sp.student_id = $2 AND p.school_id = $1
-            AND pp.notify_enabled AND pp.telegram_chat_id IS NOT NULL`,
+            AND pp.notify_enabled AND pp.telegram_chat_id IS NOT NULL
+            AND pp.telegram_verified_at IS NOT NULL`,
         [req.schoolId, input.studentId, input.amount, payment.receipt_no, left, body],
       );
 

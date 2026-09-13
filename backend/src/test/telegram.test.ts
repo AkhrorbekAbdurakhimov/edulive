@@ -5,6 +5,7 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { pool } from '../db/pool.js';
 import { seal, open } from '../utils/secretbox.js';
+import { childCard, childrenOf } from '../modules/telegram/telegram.service.js';
 import {
   createSuperadmin,
   createTestSchool,
@@ -100,6 +101,30 @@ test("noto'g'ri formatdagi token rad etiladi", async () => {
   assert.match(res.body.error, /Token formati/);
 });
 
+test("tasdiqlash kartochkasi: sinf, tug'ilgan sana va oylik to'lov", async () => {
+  const st = await createTestStudent(school, 'Kartochka', 'Sinovi', { discountPercent: 20 });
+  await pool.query(`UPDATE students SET birth_date = '2010-07-17' WHERE id = $1`, [st.studentId]);
+  const res = await api('POST', `/students/${st.studentId}/parents`, {
+    fullName: 'Kartochka Otasi', phone: '+998901239955', relation: 'father',
+  }, school.adminToken);
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+
+  const { rows } = await pool.query<{ id: string }>(
+    `SELECT parent_id AS id FROM parent_phones WHERE school_id = $1 AND phone = $2`,
+    [school.schoolId, '+998901239955']);
+
+  const kids = await childrenOf(rows[0].id);
+  assert.equal(kids.length, 1);
+
+  const card = childCard(kids[0]);
+  assert.match(card, /Kartochka Sinovi/);
+  assert.match(card, /1-A sinf o'quvchisi/);
+  assert.match(card, /17\.07\.2010 da tug'ilgan/);
+  // Chegirmadan keyingi summa: ota-ona haqiqatda to'laydigan pul.
+  assert.match(card, /800 000 so'm/);
+  assert.match(card, /20% chegirma/);
+});
+
 /** Webhook — ochiq yo'l, shuning uchun to'g'ridan-to'g'ri fetch bilan. */
 async function hook(body: unknown, headerSecret: string | null, path = secret) {
   const res = await fetch(`${base}/telegram/webhook/${path}`, {
@@ -126,25 +151,86 @@ test('webhook: sarlavhasiz yoki begona secret bilan hech nima qilmaydi', async (
   assert.equal(after2.rows[0].telegram_chat_id, null, 'hech narsa bog\'lanmasligi kerak');
 });
 
-test("webhook: tasdiqlangan raqam ota-onaga bog'lanadi", async () => {
-  const chatId = 555000111;
-  const status = await hook(
-    { message: { chat: { id: chatId }, from: { id: chatId }, contact: { phone_number: '998901239911', user_id: chatId } } },
-    secret,
-  );
-  assert.equal(status, 200);
+const CHAT = 555000111;
 
-  const row = await pool.query(
-    `SELECT telegram_chat_id, telegram_verified_at, notify_enabled FROM parent_phones WHERE parent_id = $1`,
+const phoneRow = () => pool.query<{
+  telegram_chat_id: string | null; telegram_verified_at: string | null;
+  telegram_rejected_at: string | null; notify_enabled: boolean;
+}>(
+  `SELECT telegram_chat_id::text AS telegram_chat_id, telegram_verified_at::text,
+          telegram_rejected_at::text, notify_enabled
+     FROM parent_phones WHERE parent_id = $1`,
+  [parentId],
+).then((r) => r.rows[0]);
+
+const sendContact = (chatId: number, phone: string) => hook(
+  { message: { chat: { id: chatId }, from: { id: chatId },
+               contact: { phone_number: phone, user_id: chatId } } },
+  secret,
+);
+
+const sendText = (chatId: number, text: string) => hook(
+  { message: { chat: { id: chatId }, from: { id: chatId }, text } },
+  secret,
+);
+
+test("webhook: raqam mos kelsa chat bog'lanadi, lekin xabar hali ketmaydi", async () => {
+  assert.equal(await sendContact(CHAT, '998901239911'), 200);
+
+  const row = await phoneRow();
+  assert.equal(row.telegram_chat_id, String(CHAT));
+  assert.equal(row.telegram_verified_at, null, 'tasdiqlanmaguncha ulangan hisoblanmaydi');
+  assert.equal(row.notify_enabled, false, 'tasdiqlanmagan chatga xabar ketmasligi kerak');
+});
+
+test('webhook: "Ha" — ota-ona farzandini tasdiqlaydi', async () => {
+  assert.equal(await sendText(CHAT, '\u2705 Ha, bu mening farzandim'), 200);
+
+  const row = await phoneRow();
+  assert.ok(row.telegram_verified_at, 'tasdiqlangan vaqt yozilishi kerak');
+  assert.equal(row.telegram_rejected_at, null);
+  assert.equal(row.notify_enabled, true);
+});
+
+test('webhook: "Yo\'q" — xabar to\'xtaydi va ma\'muriyat ogohlantiriladi', async () => {
+  // Qaytadan ulanish: har yangi ulanishda tasdiq qayta so'raladi.
+  assert.equal(await sendContact(CHAT, '998901239911'), 200);
+  assert.equal(await sendText(CHAT, "\u274C Yo'q, bu mening farzandim emas"), 200);
+
+  const row = await phoneRow();
+  assert.ok(row.telegram_rejected_at, 'rad etilgan vaqt yozilishi kerak');
+  assert.equal(row.telegram_verified_at, null);
+  assert.equal(row.notify_enabled, false, "noto'g'ri bog'langan raqamga xabar ketmaydi");
+
+  const { rows } = await pool.query<{ body: string }>(
+    `SELECT body FROM notifications
+      WHERE school_id = $1 AND kind = 'parent.link.rejected'`,
+    [school.schoolId],
+  );
+  assert.equal(rows.length, 1, "ma'muriyat uchun yozuv qolishi kerak");
+  assert.match(rows[0].body, /Botov Ota/);
+  assert.match(rows[0].body, /Botov Farzand/, 'qaysi o\'quvchi ekani ko\'rinishi kerak');
+});
+
+test('webhook: tasdiqlanmagan raqamga davomat xabari yozilmaydi', async () => {
+  // Rad etilgan raqam yuqoridagi testdan qolgan — navbatga tushmasligi kerak.
+  const { rows } = await pool.query<{ c: number }>(
+    `SELECT count(*)::int AS c
+       FROM parent_phones pp
+      WHERE pp.parent_id = $1 AND pp.notify_enabled
+        AND pp.telegram_chat_id IS NOT NULL AND pp.telegram_verified_at IS NOT NULL`,
     [parentId],
   );
-  assert.equal(String(row.rows[0].telegram_chat_id), String(chatId));
-  assert.ok(row.rows[0].telegram_verified_at, 'tasdiqlangan vaqt yozilishi kerak');
-  assert.equal(row.rows[0].notify_enabled, true);
+  assert.equal(rows[0].c, 0);
 });
 
 test("webhook: begona odamning kontakti qabul qilinmaydi", async () => {
-  await pool.query(`UPDATE parent_phones SET telegram_chat_id = NULL WHERE parent_id = $1`, [parentId]);
+  await pool.query(
+    `UPDATE parent_phones
+        SET telegram_chat_id = NULL, telegram_verified_at = NULL, telegram_rejected_at = NULL
+      WHERE parent_id = $1`,
+    [parentId],
+  );
   // contact.user_id != from.id — kimdir boshqaning raqamini yubordi
   await hook(
     { message: { chat: { id: 777 }, from: { id: 777 }, contact: { phone_number: PARENT_PHONE, user_id: 999 } } },
@@ -176,7 +262,10 @@ test("bot import qilingan raqamni topadi ('+' siz kiritilgan bo'lsa ham)", async
   );
   assert.equal(status, 200);
 
-  const linked = await pool.query<{ chat: string | null }>(
-    `SELECT telegram_chat_id::text AS chat FROM parent_phones WHERE id = $1`, [rows[0].id]);
+  const linked = await pool.query<{ chat: string | null; verified: string | null }>(
+    `SELECT telegram_chat_id::text AS chat, telegram_verified_at::text AS verified
+       FROM parent_phones WHERE id = $1`, [rows[0].id]);
   assert.equal(linked.rows[0].chat, String(chatId), 'raqam mos kelib, ota-ona ulanishi kerak');
+  // Bu ota-onaga farzand biriktirilmagan — tasdiqlaydigan narsa yo'q.
+  assert.ok(linked.rows[0].verified, 'farzandi yo\'q bo\'lsa tasdiq so\'ralmaydi');
 });

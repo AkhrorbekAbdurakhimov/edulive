@@ -103,24 +103,36 @@ notificationsRoutes.get(
       ? `https://t.me/${bot}${rows[0].tg_code ? `?start=${rows[0].tg_code}` : ''}`
       : null;
 
-    const { rows: stat } = await pool.query<{ total: number; connected: number }>(
+    // "Ulangan" = farzandini TASDIQLAGAN: xabar faqat shunga ketadi.
+    const { rows: stat } = await pool.query<{
+      total: number; connected: number; waiting: number; rejected: number;
+    }>(
       `SELECT count(*)::int AS total,
-              count(telegram_chat_id)::int AS connected
+              count(telegram_verified_at)::int AS connected,
+              count(*) FILTER (WHERE telegram_chat_id IS NOT NULL
+                               AND telegram_verified_at IS NULL
+                               AND telegram_rejected_at IS NULL)::int AS waiting,
+              count(telegram_rejected_at)::int AS rejected
          FROM parent_phones WHERE school_id = $1`,
       [req.schoolId],
     );
 
-    // Ulanmaganlar — maktab qo'ng'iroq qilib aytishi uchun
+    // Xabar bormaydigan raqamlar — maktab qo'ng'iroq qilib hal qilishi uchun.
+    // Eng tepada "tasdiqlamadi": bu shunchaki ulanmagan emas, ma'lumot xato
+    // degani — ota-ona boshqa odamning farzandini ko'rgan.
     const { rows: pending } = await pool.query(
       `SELECT pp.id, p.full_name, pp.phone,
+              CASE WHEN pp.telegram_rejected_at IS NOT NULL THEN 'rejected'
+                   WHEN pp.telegram_chat_id IS NOT NULL     THEN 'pending'
+                   ELSE 'none' END AS state,
               string_agg(DISTINCT s.last_name || ' ' || s.first_name, ', ') AS students
          FROM parent_phones pp
          JOIN parents p ON p.id = pp.parent_id
          LEFT JOIN student_parents sp ON sp.parent_id = p.id
          LEFT JOIN students s ON s.id = sp.student_id AND s.status = 'active'
-        WHERE pp.school_id = $1 AND pp.telegram_chat_id IS NULL
+        WHERE pp.school_id = $1 AND pp.telegram_verified_at IS NULL
         GROUP BY pp.id, p.full_name, pp.phone
-        ORDER BY p.full_name, pp.phone
+        ORDER BY (pp.telegram_rejected_at IS NULL), p.full_name, pp.phone
         LIMIT 200`,
       [req.schoolId],
     );
