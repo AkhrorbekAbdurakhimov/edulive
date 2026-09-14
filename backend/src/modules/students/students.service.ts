@@ -1,6 +1,6 @@
 import type { Db } from '../../db/pool.js';
 import { normalizePhone, PHONE_HINT } from '../../utils/phone.js';
-import { badRequest, conflict } from '../../utils/errors.js';
+import { badRequest, conflict, notFound } from '../../utils/errors.js';
 import { uzSum } from '../../utils/money.js';
 import { activeLoans, type ActiveLoan } from '../library/library.service.js';
 
@@ -155,6 +155,71 @@ export async function guardiansOf(db: Db, schoolId: string, studentId: string) {
     [schoolId, studentId],
   );
   return rows;
+}
+
+/** Raqam o'zgarganda nima bo'lganini aytadi — interfeys shunga qarab xabar beradi. */
+export interface PhoneChange {
+  before: string;
+  after: string;
+  /** Eski raqam Telegram botga ulangan edi va ulanish uzildi. */
+  wasLinked: boolean;
+  /** Uzilgan chat — ota-onaga "qayta ulaning" deb yozish uchun. */
+  chatId: string | null;
+}
+
+/**
+ * Mas'ul shaxsning telefon raqamini o'zgartirish.
+ *
+ * Raqam o'zgarsa Telegram ulanishi DARHOL uziladi: chat eski raqamga
+ * tegishli va u raqam boshqa odamga o'tib ketgan bo'lishi mumkin — aks holda
+ * begona odam farzand haqidagi xabarlarni olib turaverardi. Ota-ona yangi
+ * raqami bilan botga qaytadan ulanadi va farzandini qaytadan tasdiqlaydi.
+ */
+export async function changePhone(
+  db: Db,
+  schoolId: string,
+  parentId: string,
+  phoneId: string,
+  raw: string,
+): Promise<PhoneChange> {
+  const [phone] = normalizePhones([raw]);
+
+  const { rows } = await db.query<{ phone: string; chat: string | null }>(
+    `SELECT phone, telegram_chat_id::text AS chat
+       FROM parent_phones WHERE id = $1 AND parent_id = $2 AND school_id = $3`,
+    [phoneId, parentId, schoolId],
+  );
+  const current = rows[0];
+  if (!current) throw notFound('Raqam topilmadi');
+
+  if (current.phone === phone) {
+    return { before: current.phone, after: phone, wasLinked: false, chatId: null };
+  }
+
+  try {
+    await db.query(
+      `UPDATE parent_phones
+          SET phone = $4,
+              telegram_chat_id = NULL,
+              telegram_verified_at = NULL,
+              telegram_rejected_at = NULL
+        WHERE id = $1 AND parent_id = $2 AND school_id = $3`,
+      [phoneId, parentId, schoolId, phone],
+    );
+  } catch (err) {
+    // Raqam maktab ichida noyob: (school_id, phone) unique.
+    if ((err as { code?: string }).code === '23505') {
+      throw conflict(`Bu raqam allaqachon ro'yxatda: ${phone}`);
+    }
+    throw err;
+  }
+
+  return {
+    before: current.phone,
+    after: phone,
+    wasLinked: current.chat !== null,
+    chatId: current.chat,
+  };
 }
 
 // ------------------------------------------------- ro'yxatdan chiqarish oldidan

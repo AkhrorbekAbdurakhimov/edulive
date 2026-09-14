@@ -8,8 +8,10 @@ import { parse, uuidParam } from '../../utils/validate.js';
 import { badRequest, conflict, notFound } from '../../utils/errors.js';
 import { audit } from '../audit/audit.service.js';
 import {
-  activeLoans, dueDateFrom, issueBook, loanDays, loanLimitMessage, markLost, maxLoans, returnBook,
+  activeLoans, dueDateFrom, issueBook, issuedMessage, loanBrief, loanDays, loanLimitMessage,
+  markLost, maxLoans, returnBook, returnedMessage,
 } from './library.service.js';
+import { queueForStudent } from '../notifications/notifications.service.js';
 
 export const libraryRoutes = Router();
 libraryRoutes.use(requireTenant, requireLibrary);
@@ -415,6 +417,17 @@ libraryRoutes.post(
         action: 'book.issue', entity: 'book_loan', entityId: created.id,
         after: { studentId: input.studentId, bookId: created.book_id, dueOn },
       }, client);
+
+      // Ota-onaga xabar NAVBATGA qo'yiladi: kutubxonachi Telegram javobini
+      // kutib turmasligi kerak, navbatdagi galereya o'zi yuboradi.
+      const brief = await loanBrief(client, req.schoolId!, created.id);
+      await queueForStudent(client, {
+        schoolId: req.schoolId!,
+        studentId: input.studentId,
+        kind: 'book.issued',
+        body: issuedMessage(brief),
+        payload: { loanId: created.id, bookId: created.book_id, dueOn },
+      });
       return created;
     });
 
@@ -440,6 +453,15 @@ libraryRoutes.post(
         action: 'book.return', entity: 'book_loan', entityId: id,
         after: { condition: input.condition },
       }, client);
+
+      const brief = await loanBrief(client, req.schoolId!, id);
+      await queueForStudent(client, {
+        schoolId: req.schoolId!,
+        studentId: brief.student_id,
+        kind: 'book.returned',
+        body: returnedMessage(brief),
+        payload: { loanId: id, condition: input.condition, daysLate: brief.days_late },
+      });
       return updated;
     });
 

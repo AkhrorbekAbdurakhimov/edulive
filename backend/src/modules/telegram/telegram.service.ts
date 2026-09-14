@@ -11,6 +11,7 @@ import { env } from '../../config/env.js';
 import { open } from '../../utils/secretbox.js';
 import { badRequest } from '../../utils/errors.js';
 import { uzSum } from '../../utils/money.js';
+import { uzDate } from '../../utils/date.js';
 
 const API = 'https://api.telegram.org';
 
@@ -131,8 +132,9 @@ export interface ChildInfo {
 export async function childrenOf(parentId: string, db: Db = pool): Promise<ChildInfo[]> {
   const { rows } = await db.query<ChildInfo>(
     `SELECT s.id,
-            s.last_name || ' ' || s.first_name
-              || COALESCE(' ' || s.middle_name, '') AS name,
+            -- Faqat familiya va ism: otasining ismi xabarni uzaytiradi,
+            -- ota-ona farzandini shusiz ham taniydi.
+            s.last_name || ' ' || s.first_name AS name,
             c.grade || '-' || c.letter AS class_name,
             s.birth_date::text AS birth_date,
             COALESCE(e.monthly_fee, c.monthly_fee) AS monthly_fee,
@@ -146,12 +148,6 @@ export async function childrenOf(parentId: string, db: Db = pool): Promise<Child
     [parentId],
   );
   return rows;
-}
-
-/** 2010-07-17 -> 17.07.2010 */
-function uzDate(iso: string): string {
-  const [y, m, d] = iso.slice(0, 10).split('-');
-  return `${d}.${m}.${y}`;
 }
 
 /**

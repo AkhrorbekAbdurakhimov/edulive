@@ -294,6 +294,83 @@ test("kitob chegarasi sozlamada o'zgaradi", async () => {
   }
 });
 
+test("kitob berilganda va qaytarilganda ota-onaga xabar ketadi", async () => {
+  const school2 = await createTestSchool('test-library-tg');
+  try {
+    const st = await createTestStudent(school2, 'Xabarli', 'Bola', { parentPhone: '+998901112299' });
+    // Ota-ona botga ulangan VA farzandini tasdiqlagan bo'lsagina xabar ketadi.
+    await pool.query(
+      `UPDATE parent_phones
+          SET telegram_chat_id = 81000001, telegram_verified_at = now()
+        WHERE school_id = $1 AND phone = '+998901112299'`,
+      [school2.schoolId],
+    );
+
+    const b = await api('POST', '/library/books',
+      { title: 'Yulduzli tunlar', author: 'Pirimqul Qodirov', copies: 1 }, school2.adminToken);
+    const loan = await api('POST', '/library/loans',
+      { studentId: st.studentId, bookId: b.body.book.id, dueOn: '2027-03-15' }, school2.adminToken);
+    assert.equal(loan.status, 201, JSON.stringify(loan.body));
+
+    const issued = await pool.query<{ body: string; status: string; kind: string }>(
+      `SELECT body, status, kind FROM notifications
+        WHERE school_id = $1 AND student_id = $2 AND kind = 'book.issued'`,
+      [school2.schoolId, st.studentId],
+    );
+    assert.equal(issued.rows.length, 1, 'berilganda bitta xabar navbatga tushishi kerak');
+    assert.equal(issued.rows[0].status, 'queued');
+    assert.match(issued.rows[0].body, /^Bola /, "xabar farzand ismi bilan boshlanadi");
+    assert.match(issued.rows[0].body, /Yulduzli tunlar/);
+    assert.match(issued.rows[0].body, /KT-/, 'inventar raqami ko\'rinishi kerak');
+    assert.match(issued.rows[0].body, /15\.03\.2027/, "muddat KK.OO.YYYY ko'rinishida");
+
+    // Kechikib va shikast bilan qaytarish — ikkalasi ham xabarda aytiladi.
+    await pool.query(
+      `UPDATE book_loans SET issued_on = CURRENT_DATE - 20, due_on = CURRENT_DATE - 3
+        WHERE id = $1`,
+      [loan.body.loan.id],
+    );
+    const back = await api('POST', `/library/loans/${loan.body.loan.id}/return`,
+      { condition: 'damaged' }, school2.adminToken);
+    assert.equal(back.status, 200, JSON.stringify(back.body));
+
+    const returned = await pool.query<{ body: string }>(
+      `SELECT body FROM notifications
+        WHERE school_id = $1 AND student_id = $2 AND kind = 'book.returned'`,
+      [school2.schoolId, st.studentId],
+    );
+    assert.equal(returned.rows.length, 1);
+    assert.match(returned.rows[0].body, /Bola "Yulduzli tunlar" kitobini qaytardi/);
+    assert.match(returned.rows[0].body, /3 kun kechikib/);
+    assert.match(returned.rows[0].body, /shikastlangan/);
+  } finally {
+    await dropTestSchool('test-library-tg');
+  }
+});
+
+test("tasdiqlanmagan ota-onaga kitob xabari yozilmaydi", async () => {
+  const school3 = await createTestSchool('test-library-tg2');
+  try {
+    const st = await createTestStudent(school3, 'Tasdiqsiz', 'Bola', { parentPhone: '+998901112288' });
+    // Botni ochgan, lekin farzandini tasdiqlamagan: xabar ketmasligi kerak.
+    await pool.query(
+      `UPDATE parent_phones SET telegram_chat_id = 81000002
+        WHERE school_id = $1 AND phone = '+998901112288'`,
+      [school3.schoolId],
+    );
+
+    const b = await api('POST', '/library/books', { title: 'Sukut', copies: 1 }, school3.adminToken);
+    await api('POST', '/library/loans',
+      { studentId: st.studentId, bookId: b.body.book.id }, school3.adminToken);
+
+    const { rows } = await pool.query<{ c: number }>(
+      `SELECT count(*)::int AS c FROM notifications WHERE school_id = $1`, [school3.schoolId]);
+    assert.equal(rows[0].c, 0, "tasdiqlanmagan chatga xabar navbatga ham tushmaydi");
+  } finally {
+    await dropTestSchool('test-library-tg2');
+  }
+});
+
 test('boshqa maktabning kitobi ko\'rinmaydi', async () => {
   const other = await createTestSchool('test-library-b');
   try {

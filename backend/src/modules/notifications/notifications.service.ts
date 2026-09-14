@@ -6,7 +6,7 @@
  * qilish Telegram javob berishini kutib turmasligi kerak. Telegram sekin
  * ishlasa yoki javob bermasa, kassir baribir ishlayveradi.
  */
-import { pool } from '../../db/pool.js';
+import { pool, type Db } from '../../db/pool.js';
 import { botForSchool, sendToParent } from '../telegram/telegram.service.js';
 
 /** Shuncha urinishdan keyin xabar "failed" bo'ladi va qayta urinilmaydi. */
@@ -104,6 +104,42 @@ export async function dispatchQueued(limit = 50): Promise<DispatchResult> {
   }
 
   return result;
+}
+
+// ---------------------------------------------------------------- navbatga qo'yish
+
+export interface StudentNotification {
+  schoolId: string;
+  studentId: string;
+  /** attendance.absent | payment.received | book.issued ... */
+  kind: string;
+  body: string;
+  payload?: Record<string, unknown>;
+}
+
+/**
+ * O'quvchining ota-onalariga xabar qo'yadi va nechtasiga ketganini qaytaradi.
+ *
+ * Kimga yuborish mumkinligi qoidasi SHU YERDA: ulangan, tasdiqlagan va
+ * xabarni o'chirmagan raqam. Qoida har modulda takrorlansa, kunlardan bir kun
+ * biri yangilanmay qolib, tasdiqlanmagan chatga xabar ketib qolardi.
+ *
+ * Har bir RAQAMGA alohida yozuv: bitta odamning ikki raqami ikki xil chat.
+ */
+export async function queueForStudent(db: Db, n: StudentNotification): Promise<number> {
+  const { rowCount } = await db.query(
+    `INSERT INTO notifications (school_id, parent_id, parent_phone_id, student_id, kind, payload, body)
+     SELECT $1, p.id, pp.id, $2, $3, $4::jsonb, $5
+       FROM student_parents sp
+       JOIN parents p ON p.id = sp.parent_id
+       JOIN parent_phones pp ON pp.parent_id = p.id
+      WHERE sp.student_id = $2 AND p.school_id = $1
+        AND pp.notify_enabled
+        AND pp.telegram_chat_id IS NOT NULL
+        AND pp.telegram_verified_at IS NOT NULL`,
+    [n.schoolId, n.studentId, n.kind, JSON.stringify(n.payload ?? {}), n.body],
+  );
+  return rowCount ?? 0;
 }
 
 let timer: NodeJS.Timeout | null = null;

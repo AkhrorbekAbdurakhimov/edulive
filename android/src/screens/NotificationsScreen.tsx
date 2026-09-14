@@ -21,6 +21,8 @@ const KIND_LABEL: Record<string, string> = {
   'attendance.late': 'Darsga kechikdi',
   'attendance.present': 'Darsga keldi',
   'debt.reminder': 'Qarz eslatmasi',
+  'book.issued': 'Kitob berildi',
+  'book.returned': 'Kitob qaytarildi',
   // Ota-ona botda "bu mening farzandim emas" dedi — tekshirish kerak.
   'parent.link.rejected': "Ota-ona ma'lumotni tasdiqlamadi",
 };

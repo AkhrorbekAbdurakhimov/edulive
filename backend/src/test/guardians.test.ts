@@ -166,3 +166,128 @@ test('boshqa maktabning mas\'ul shaxsiga tegib bo\'lmaydi', async () => {
     await dropTestSchool('test-guard-b');
   }
 });
+
+test("mas'ul shaxs tahrirlanadi: ism, qarindoshlik va asosiyligi", async () => {
+  const st = await createTestStudent(school, 'Tahrir', 'Sinovi');
+  await api('POST', `/students/${st.studentId}/parents`,
+    { fullName: 'Eski Ism', phone: '+998901110051', relation: 'father', isPrimary: true },
+    school.adminToken);
+  await api('POST', `/students/${st.studentId}/parents`,
+    { fullName: 'Onasi Ismi', phone: '+998901110052', relation: 'mother' },
+    school.adminToken);
+
+  const before = await api('GET', `/students/${st.studentId}`, undefined, school.adminToken);
+  const father = before.body.parents.find((p: { full_name: string }) => p.full_name === 'Eski Ism');
+  const mother = before.body.parents.find((p: { full_name: string }) => p.full_name === 'Onasi Ismi');
+  assert.equal(father.is_primary, true);
+
+  // Ism va qarindoshlik o'zgaradi
+  const res = await api('PATCH', `/students/${st.studentId}/parents/${father.id}`,
+    { fullName: 'Yangi Ism', relation: 'guardian' }, school.adminToken);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.parent.full_name, 'Yangi Ism');
+  assert.equal(res.body.parent.relation, 'guardian');
+  assert.equal(res.body.children, 1, 'nechta farzandga biriktirilgani qaytadi');
+
+  // Asosiylik boshqasiga o'tadi va eskisidan tushadi
+  const swap = await api('PATCH', `/students/${st.studentId}/parents/${mother.id}`,
+    { isPrimary: true }, school.adminToken);
+  assert.equal(swap.status, 200, JSON.stringify(swap.body));
+
+  const after = await api('GET', `/students/${st.studentId}`, undefined, school.adminToken);
+  const byId = (id: string) => after.body.parents.find((p: { id: string }) => p.id === id);
+  assert.equal(byId(mother.id).is_primary, true);
+  assert.equal(byId(father.id).is_primary, false, 'asosiy bitta bo\'lishi kerak');
+  assert.equal(byId(father.id).full_name, 'Yangi Ism');
+  // Raqamlar tegilmaydi
+  assert.equal(byId(father.id).phones.length, 1);
+  assert.equal(byId(father.id).phones[0].phone, '+998901110051');
+
+  const { rows } = await pool.query(
+    `SELECT 1 FROM audit_log WHERE school_id = $1 AND action = 'guardian.update' AND entity_id = $2`,
+    [school.schoolId, st.studentId]);
+  assert.equal(rows.length, 2, 'har tahrir audit jurnaliga tushadi');
+});
+
+test("boshqa maktabning mas'ul shaxsi tahrirlanmaydi", async () => {
+  const other = await createTestSchool('test-guardians-b');
+  try {
+    const st = await createTestStudent(school, 'Chegara', 'Sinovi');
+    await api('POST', `/students/${st.studentId}/parents`,
+      { fullName: 'Begona Ota', phone: '+998901110053', relation: 'father' }, school.adminToken);
+    const card = await api('GET', `/students/${st.studentId}`, undefined, school.adminToken);
+    const parentId = card.body.parents[0].id;
+
+    const res = await api('PATCH', `/students/${st.studentId}/parents/${parentId}`,
+      { fullName: 'Buzilgan Ism' }, other.adminToken);
+    assert.equal(res.status, 404, JSON.stringify(res.body));
+  } finally {
+    await dropTestSchool('test-guardians-b');
+  }
+});
+
+test("raqam o'zgarsa Telegram ulanishi darhol uziladi", async () => {
+  const st = await createTestStudent(school, 'Raqam', 'Sinovi');
+  await api('POST', `/students/${st.studentId}/parents`,
+    { fullName: 'Ulangan Ota', phone: '+998901110061', relation: 'father' }, school.adminToken);
+
+  const card = await api('GET', `/students/${st.studentId}`, undefined, school.adminToken);
+  const parent = card.body.parents[0];
+  const phone = parent.phones[0];
+
+  // Ota-ona botga ulangan va farzandini tasdiqlagan holat.
+  await pool.query(
+    `UPDATE parent_phones
+        SET telegram_chat_id = 82000001, telegram_verified_at = now()
+      WHERE id = $1`,
+    [phone.id]);
+
+  const res = await api('PATCH', `/students/parents/${parent.id}/phones/${phone.id}`,
+    { phone: '+998901110062' }, school.adminToken);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.telegramUnlinked, true, 'interfeys ogohlantira olishi kerak');
+
+  const { rows } = await pool.query<{
+    phone: string; chat: string | null; verified: string | null; notify: boolean;
+  }>(
+    `SELECT phone, telegram_chat_id::text AS chat, telegram_verified_at::text AS verified,
+            notify_enabled AS notify
+       FROM parent_phones WHERE id = $1`,
+    [phone.id]);
+  assert.equal(rows[0].phone, '+998901110062');
+  assert.equal(rows[0].chat, null, 'eski chat uzilishi kerak');
+  assert.equal(rows[0].verified, null, 'tasdiq ham bekor bo\'ladi');
+  assert.equal(rows[0].notify, true, 'xabar sozlamasi tegilmaydi \u2014 qayta ulansa ishlaydi');
+
+  // Kartochkada holat "ulanmagan" bo'lib ko'rinadi.
+  const after = await api('GET', `/students/${st.studentId}`, undefined, school.adminToken);
+  const ph = after.body.parents[0].phones[0];
+  assert.equal(ph.telegramState, 'none');
+  assert.equal(ph.telegramLinked, false);
+
+  const { rows: log } = await pool.query(
+    `SELECT 1 FROM audit_log WHERE school_id = $1 AND action = 'guardian.phone.change'`,
+    [school.schoolId]);
+  assert.equal(log.length, 1, 'raqam o\'zgarishi audit jurnaliga tushadi');
+});
+
+test("band raqamga o'zgartirib bo'lmaydi", async () => {
+  const st = await createTestStudent(school, 'Band', 'Raqam');
+  await api('POST', `/students/${st.studentId}/parents`,
+    { fullName: 'Birinchi Ota', phone: '+998901110071', relation: 'father' }, school.adminToken);
+  await api('POST', `/students/${st.studentId}/parents`,
+    { fullName: 'Ikkinchi Ona', phone: '+998901110072', relation: 'mother' }, school.adminToken);
+
+  const card = await api('GET', `/students/${st.studentId}`, undefined, school.adminToken);
+  const first = card.body.parents.find((p: { full_name: string }) => p.full_name === 'Birinchi Ota');
+
+  const res = await api('PATCH', `/students/parents/${first.id}/phones/${first.phones[0].id}`,
+    { phone: '+998901110072' }, school.adminToken);
+  assert.equal(res.status, 409, JSON.stringify(res.body));
+  assert.match(res.body.error, /allaqachon ro'yxatda/);
+
+  // Rad etilgan o'zgarish eski raqamni buzmaydi.
+  const { rows } = await pool.query<{ phone: string }>(
+    `SELECT phone FROM parent_phones WHERE id = $1`, [first.phones[0].id]);
+  assert.equal(rows[0].phone, '+998901110071');
+});

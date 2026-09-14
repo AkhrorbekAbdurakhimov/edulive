@@ -5,16 +5,11 @@ import { requireRole } from '../../middleware/auth.js';
 import { requireTenant } from '../../middleware/tenant.js';
 import { ah } from '../../utils/http.js';
 import { uzSum } from '../../utils/money.js';
+import { uzDate as fmtDate } from '../../utils/date.js';
 import { parse } from '../../utils/validate.js';
 import { badRequest } from '../../utils/errors.js';
 import { audit } from '../audit/audit.service.js';
 import { dispatchQueued } from '../notifications/notifications.service.js';
-
-/** 2026-09-10 -> 10.09.2026 */
-function fmtDate(d: string): string {
-  const x = new Date(d);
-  return `${String(x.getDate()).padStart(2, '0')}.${String(x.getMonth() + 1).padStart(2, '0')}.${x.getFullYear()}`;
-}
 
 export const debtorsRoutes = Router();
 debtorsRoutes.use(requireTenant, requireRole('admin', 'manager'));

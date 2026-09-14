@@ -103,7 +103,9 @@ test("noto'g'ri formatdagi token rad etiladi", async () => {
 
 test("tasdiqlash kartochkasi: sinf, tug'ilgan sana va oylik to'lov", async () => {
   const st = await createTestStudent(school, 'Kartochka', 'Sinovi', { discountPercent: 20 });
-  await pool.query(`UPDATE students SET birth_date = '2010-07-17' WHERE id = $1`, [st.studentId]);
+  await pool.query(
+    `UPDATE students SET birth_date = '2010-07-17', middle_name = 'Dilshodovich' WHERE id = $1`,
+    [st.studentId]);
   const res = await api('POST', `/students/${st.studentId}/parents`, {
     fullName: 'Kartochka Otasi', phone: '+998901239955', relation: 'father',
   }, school.adminToken);
@@ -118,6 +120,8 @@ test("tasdiqlash kartochkasi: sinf, tug'ilgan sana va oylik to'lov", async () =>
 
   const card = childCard(kids[0]);
   assert.match(card, /Kartochka Sinovi/);
+  // Otasining ismi qo'shilmaydi — familiya va ism yetarli.
+  assert.ok(!card.includes('Dilshodovich'), 'kartochkada otasining ismi bo\'lmaydi');
   assert.match(card, /1-A sinf o'quvchisi/);
   assert.match(card, /17\.07\.2010 da tug'ilgan/);
   // Chegirmadan keyingi summa: ota-ona haqiqatda to'laydigan pul.

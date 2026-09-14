@@ -41,7 +41,9 @@ export function Guardians(
 ) {
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Guardian | null>(null);
   const [addPhoneTo, setAddPhoneTo] = useState<Guardian | null>(null);
+  const [editPhone, setEditPhone] = useState<{ guardian: Guardian; phone: GuardianPhone } | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['student', studentId] });
@@ -120,6 +122,12 @@ export function Guardians(
                           )}
                           <button
                             type="button" className="btn btn-ghost sm"
+                            onClick={() => setEditPhone({ guardian: g, phone: ph })}
+                          >
+                            Raqamni o'zgartirish
+                          </button>
+                          <button
+                            type="button" className="btn btn-ghost sm"
                             onClick={() => patchPhone.mutate({
                               parentId: g.id, phoneId: ph.id,
                               body: { notifyEnabled: !ph.notifyEnabled },
@@ -145,6 +153,12 @@ export function Guardians(
                   <div className="row">
                     <button
                       type="button" className="btn btn-ghost sm"
+                      onClick={() => setEditing(g)}
+                    >
+                      Tahrirlash
+                    </button>
+                    <button
+                      type="button" className="btn btn-ghost sm"
                       onClick={() => setAddPhoneTo(g)}
                     >
                       + Qo'shimcha raqam
@@ -167,12 +181,187 @@ export function Guardians(
       {note && <p className="hint">{note}</p>}
 
       {adding && <AddGuardianModal studentId={studentId} onClose={() => setAdding(false)} />}
+      {editing && (
+        <EditGuardianModal
+          studentId={studentId} guardian={editing} onClose={() => setEditing(null)}
+        />
+      )}
       {addPhoneTo && (
         <AddPhoneModal
           studentId={studentId} guardian={addPhoneTo} onClose={() => setAddPhoneTo(null)}
         />
       )}
+      {editPhone && (
+        <EditPhoneModal
+          studentId={studentId} guardian={editPhone.guardian} phone={editPhone.phone}
+          onClose={() => setEditPhone(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Mas'ul shaxsni tahrirlash: ismi, qarindoshligi, asosiyligi.
+ *
+ * Raqamlar bu yerda emas — ular ro'yxatda alohida boshqariladi: har raqam
+ * alohida Telegram chati va o'chirish qoidalari boshqacha.
+ */
+function EditGuardianModal(
+  { studentId, guardian, onClose }:
+  { studentId: string; guardian: Guardian; onClose: () => void },
+) {
+  const qc = useQueryClient();
+  const [fullName, setFullName] = useState(guardian.full_name);
+  const [relation, setRelation] = useState(guardian.relation ?? 'father');
+  const [isPrimary, setIsPrimary] = useState(guardian.is_primary);
+
+  const save = useMutation({
+    mutationFn: async () =>
+      (await api.patch(`/students/${studentId}/parents/${guardian.id}`, {
+        fullName: fullName.trim(),
+        relation,
+        isPrimary,
+      })).data as { children: number },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['student', studentId] });
+      qc.invalidateQueries({ queryKey: ['students'] });
+      onClose();
+    },
+  });
+
+  const shortName = fullName.trim().length < 3;
+
+  return (
+    <Modal title="Mas'ul shaxsni tahrirlash" onClose={onClose}>
+      <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
+        <div className="field">
+          <label htmlFor="eg-name">F.I.Sh.</label>
+          <input
+            id="eg-name" className="input" value={fullName}
+            onChange={(e) => setFullName(e.target.value)} required
+          />
+          {shortName && <span className="hint">Kamida 3 belgi</span>}
+        </div>
+
+        <div className="field">
+          <label htmlFor="eg-rel">Kim bo'ladi</label>
+          <select
+            id="eg-rel" className="input" value={relation}
+            onChange={(e) => setRelation(e.target.value)}
+          >
+            {Object.entries(REL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
+
+        <label className="check-row">
+          <input
+            type="checkbox" checked={isPrimary}
+            onChange={(e) => setIsPrimary(e.target.checked)}
+          />
+          <span>
+            Asosiy mas'ul shaxs
+            <span className="help">
+              Ro'yxatlarda va hisobotlarda shu odam ko'rsatiladi. Faqat shu
+              o'quvchi uchun — boshqa farzandiga ta'sir qilmaydi.
+            </span>
+          </span>
+        </label>
+
+        {/* Ism va qarindoshlik ODAMGA tegishli: aka-ukaga ham biriktirilgan
+            bo'lsa, o'zgarish ularda ham ko'rinadi. */}
+        <p className="help" style={{ marginTop: 10 }}>
+          Ism va qarindoshlik o'zgarishi bu odam biriktirilgan barcha
+          farzandlarda ko'rinadi. Telefon raqamlari bu yerda o'zgarmaydi.
+        </p>
+
+        {save.error != null && <p className="hint">{errOf(save.error)}</p>}
+
+        <div className="actions">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Bekor qilish
+          </button>
+          <button className="btn btn-primary" disabled={shortName || save.isPending}>
+            {save.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Telefon raqamini o'zgartirish.
+ *
+ * Botga ulangan raqam o'zgarsa ulanish uziladi — buni oldindan aytamiz:
+ * kutubxonachi yoki menejer "raqamni tuzatdim, xabar nega kelmayapti?" degan
+ * holatga tushmasin. Ota-ona yangi raqami bilan qaytadan ulanadi.
+ */
+function EditPhoneModal(
+  { studentId, guardian, phone, onClose }:
+  { studentId: string; guardian: Guardian; phone: GuardianPhone; onClose: () => void },
+) {
+  const qc = useQueryClient();
+  const [value, setValue] = useState(phone.phone);
+  const linked = (phone.telegramState ?? (phone.telegramLinked ? 'confirmed' : 'none')) !== 'none';
+
+  const save = useMutation({
+    mutationFn: async () =>
+      (await api.patch(`/students/parents/${guardian.id}/phones/${phone.id}`, {
+        phone: value.trim(),
+      })).data as { telegramUnlinked: boolean },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['student', studentId] });
+      qc.invalidateQueries({ queryKey: ['students'] });
+      onClose();
+    },
+  });
+
+  const same = value.trim() === phone.phone;
+
+  return (
+    <Modal title="Telefon raqamini o'zgartirish" onClose={onClose}>
+      <form onSubmit={(e: FormEvent) => { e.preventDefault(); save.mutate(); }}>
+        <p className="muted" style={{ marginTop: 0 }}>
+          <strong>{guardian.full_name}</strong> — hozirgi raqam{' '}
+          <span className="num">{phone.phone}</span>
+        </p>
+
+        <div className="field">
+          <label htmlFor="ep-phone">Yangi raqam</label>
+          <input
+            id="ep-phone" className="input num" value={value} inputMode="tel"
+            onChange={(e) => setValue(e.target.value)} placeholder="+998901234567" required
+          />
+        </div>
+
+        {linked && !same && (
+          <div className="alarm" role="alert">
+            {/* Rang yolg'iz ma'no tashimaydi — ikonka va so'z birga. */}
+            <span className="alarm-icon" aria-hidden>⚠</span>
+            <div>
+              <strong>Telegram ulanishi uziladi</strong>
+              <span>
+                Bu raqam botga ulangan. Raqam o'zgarishi bilan ulanish darhol
+                uziladi va bu ota-onaga xabar bormaydi. U yangi raqami bilan
+                botni ochib, farzandini qaytadan tasdiqlashi kerak.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {save.error != null && <p className="hint">{errOf(save.error)}</p>}
+
+        <div className="actions">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Bekor qilish
+          </button>
+          <button className="btn btn-primary" disabled={same || save.isPending}>
+            {save.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

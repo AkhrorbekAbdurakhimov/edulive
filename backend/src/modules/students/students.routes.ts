@@ -9,8 +9,9 @@ import { assertClassAccess } from '../classes/classes.service.js';
 import { conflict, forbidden, notFound } from '../../utils/errors.js';
 import { ah } from '../../utils/http.js';
 import {
-  guardiansOf, linkGuardian, addPhones, normalizePhones, leavingDebt, MAX_PHONES,
+  guardiansOf, linkGuardian, addPhones, changePhone, normalizePhones, leavingDebt, MAX_PHONES,
 } from './students.service.js';
+import { botForSchool, sendToParent } from '../telegram/telegram.service.js';
 import { parse, uuidParam } from '../../utils/validate.js';
 import { normalizePhone, PHONE_HINT } from '../../utils/phone.js';
 
@@ -634,6 +635,78 @@ studentsRoutes.post(
 
 // ------------------------------------------------- mas'ul shaxs va raqamlari
 
+/**
+ * Mas'ul shaxsni tahrirlash: ismi, qarindoshligi va shu o'quvchi uchun
+ * asosiyligi.
+ *
+ * DIQQAT: ism va qarindoshlik ODAMGA tegishli — agar bu odam aka-ukaga ham
+ * biriktirilgan bo'lsa, o'zgarish ularda ham ko'rinadi. Shuning uchun javobda
+ * nechta farzandga tegishli ekani qaytadi, interfeys buni aytib turadi.
+ * "Asosiy" esa faqat SHU o'quvchi uchun (`student_parents.is_primary`).
+ */
+studentsRoutes.patch(
+  '/:id/parents/:parentId',
+  requireRole('admin', 'manager'),
+  ah(async (req, res) => {
+    const studentId = uuidParam(req);
+    const parentId = uuidParam(req, 'parentId');
+    const input = parse(
+      z.object({
+        fullName: z.string().trim().min(3, "Mas'ul shaxs ismi kamida 3 belgi").max(200).optional(),
+        relation: z.enum(['father', 'mother', 'guardian'], {
+          errorMap: () => ({ message: "Qarindoshlik father, mother yoki guardian bo'lishi kerak" }),
+        }).optional(),
+        isPrimary: z.boolean().optional(),
+      }),
+      req.body,
+    );
+
+    const before = await pool.query<{ full_name: string; relation: string | null; is_primary: boolean }>(
+      `SELECT p.full_name, p.relation, sp.is_primary
+         FROM parents p
+         JOIN student_parents sp ON sp.parent_id = p.id AND sp.student_id = $1
+        WHERE p.id = $2 AND p.school_id = $3`,
+      [studentId, parentId, req.schoolId],
+    );
+    if (!before.rows[0]) throw notFound("Mas'ul shaxs topilmadi");
+
+    const after = await tx(async (client) => {
+      const { rows } = await client.query<{ full_name: string; relation: string | null }>(
+        `UPDATE parents
+            SET full_name = COALESCE($3, full_name),
+                relation  = COALESCE($4, relation)
+          WHERE id = $1 AND school_id = $2
+          RETURNING full_name, relation`,
+        [parentId, req.schoolId, input.fullName ?? null, input.relation ?? null],
+      );
+
+      if (input.isPrimary !== undefined) {
+        // Asosiy bitta bo'ladi: boshqalari shu o'quvchi uchun tushiriladi.
+        await client.query(
+          input.isPrimary
+            ? `UPDATE student_parents SET is_primary = (parent_id = $2) WHERE student_id = $1`
+            : `UPDATE student_parents SET is_primary = false
+                WHERE student_id = $1 AND parent_id = $2`,
+          [studentId, parentId],
+        );
+      }
+
+      await audit(req, {
+        action: 'guardian.update', entity: 'student', entityId: studentId,
+        before: before.rows[0],
+        after: { ...rows[0], is_primary: input.isPrimary ?? before.rows[0].is_primary },
+      }, client);
+      return rows[0];
+    });
+
+    // Nechta farzandga biriktirilgan — interfeys ogohlantirishi uchun.
+    const { rows: kids } = await pool.query<{ c: number }>(
+      `SELECT count(*)::int AS c FROM student_parents WHERE parent_id = $1`, [parentId]);
+
+    res.json({ parent: after, children: kids[0].c });
+  }),
+);
+
 /** Mas'ul shaxsni o'quvchidan uzish. Odam o'chirilmaydi — boshqa farzandi bo'lishi mumkin. */
 studentsRoutes.delete(
   '/:id/parents/:parentId',
@@ -726,9 +799,29 @@ studentsRoutes.patch(
     const parentId = uuidParam(req, 'parentId');
     const phoneId = uuidParam(req, 'phoneId');
     const input = parse(
-      z.object({ isPrimary: z.boolean().optional(), notifyEnabled: z.boolean().optional() }),
+      z.object({
+        isPrimary: z.boolean().optional(),
+        notifyEnabled: z.boolean().optional(),
+        // Raqamning o'zini o'zgartirish — Telegram ulanishini uzadi.
+        phone: phoneStr.optional(),
+      }),
       req.body,
     );
+
+    const changed = await tx(async (client) => {
+      if (input.phone !== undefined) {
+        const ch = await changePhone(client, req.schoolId!, parentId, phoneId, input.phone);
+        if (ch.before !== ch.after) {
+          await audit(req, {
+            action: 'guardian.phone.change', entity: 'parent', entityId: parentId,
+            before: { phone: ch.before, telegramLinked: ch.wasLinked },
+            after: { phone: ch.after, telegramLinked: false },
+          }, client);
+        }
+        return ch;
+      }
+      return null;
+    });
 
     await tx(async (client) => {
       if (input.isPrimary) {
@@ -746,6 +839,25 @@ studentsRoutes.patch(
       }
     });
 
-    res.json({ ok: true });
+    // Uzilgan chatga xabar — ota-ona nega xabar kelmay qolganini bilsin.
+    // Farzand ma'lumoti yozilmaydi: raqam boshqa odamda bo'lishi mumkin.
+    if (changed?.wasLinked && changed.chatId) {
+      const bot = await botForSchool(req.schoolId!);
+      if (bot) {
+        void sendToParent(
+          bot.token, changed.chatId,
+          "Maktab ro'yxatida telefon raqamingiz o'zgardi, shuning uchun bu chat "
+          + "uzildi va bu yerga endi xabar kelmaydi.\n\n"
+          + "Yangi raqamingiz bilan qaytadan ulaning: /start",
+        );
+      }
+    }
+
+    res.json({
+      ok: true,
+      phone: changed?.after,
+      // Interfeys "Telegram ulanishi uzildi" deb ogohlantirishi uchun.
+      telegramUnlinked: changed?.wasLinked ?? false,
+    });
   }),
 );

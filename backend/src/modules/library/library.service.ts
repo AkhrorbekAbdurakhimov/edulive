@@ -8,6 +8,7 @@
 import type { PoolClient } from 'pg';
 import { pool, type Db } from '../../db/pool.js';
 import { badRequest, conflict, notFound } from '../../utils/errors.js';
+import { uzDate } from '../../utils/date.js';
 
 /** Sozlamada boshqacha yozilmagan bo'lsa, kitob shuncha kunga beriladi. */
 export const DEFAULT_LOAN_DAYS = 14;
@@ -260,4 +261,54 @@ export async function markLost(
     [rows[0].copy_id, schoolId],
   );
   return updated[0];
+}
+
+// ---------------------------------------------------------------- xabar uchun
+
+export interface LoanBrief {
+  student_id: string;
+  first_name: string;
+  title: string;
+  author: string | null;
+  inventory_no: string;
+  due_on: string;
+  returned_on: string | null;
+  condition_in: string | null;
+  days_late: number;
+}
+
+/** Ota-onaga yuboriladigan xabar matni uchun kerak bo'ladigan ma'lumot. */
+export async function loanBrief(db: Db, schoolId: string, loanId: string): Promise<LoanBrief> {
+  const { rows } = await db.query<LoanBrief>(
+    `SELECT l.student_id, s.first_name, b.title, b.author, c.inventory_no,
+            l.due_on, l.returned_on, l.condition_in,
+            GREATEST(0, COALESCE(l.returned_on, CURRENT_DATE) - l.due_on)::int AS days_late
+       FROM book_loans l
+       JOIN books b ON b.id = l.book_id
+       JOIN book_copies c ON c.id = l.copy_id
+       JOIN students s ON s.id = l.student_id
+      WHERE l.id = $1 AND l.school_id = $2`,
+    [loanId, schoolId],
+  );
+  return rows[0];
+}
+
+/** "Kitob berildi" xabari. */
+export function issuedMessage(b: LoanBrief): string {
+  return `${b.first_name} kutubxonadan "${b.title}" kitobini oldi.\n`
+    + `Inventar raqami: ${b.inventory_no}\n`
+    + `Qaytarish muddati: ${uzDate(b.due_on)}`;
+}
+
+/**
+ * "Kitob qaytarildi" xabari.
+ *
+ * Kechikish va shikast alohida qatorda: ota-ona xabarni o'qiboq nima
+ * bo'lganini bilishi kerak, maktabga qo'ng'iroq qilib so'ramasin.
+ */
+export function returnedMessage(b: LoanBrief): string {
+  const lines = [`${b.first_name} "${b.title}" kitobini qaytardi.`];
+  if (b.days_late > 0) lines.push(`${b.days_late} kun kechikib qaytarildi.`);
+  if (b.condition_in === 'damaged') lines.push('Kitob shikastlangan holatda qabul qilindi.');
+  return lines.join('\n');
 }
