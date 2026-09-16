@@ -118,6 +118,61 @@ xabar yuborilmaydi: davomat, to'lov va qarz eslatmasi so'rovlariga
 - **Farzandi biriktirilmagan ota-ona** avvalgidek darhol ulanadi —
   tasdiqlaydigan narsa yo'q.
 
+## Qarz eslatmasi SMS orqali — Eskiz.uz (16.09.2026)
+
+Telegram eslatmasi faqat botga ULANGAN ota-onaga yetadi. Amalda ulanmaganlar
+ko'p, ular esa aynan eslatma kerak bo'lganlar. Shuning uchun ikkinchi kanal
+qo'shildi: Eskiz.uz orqali SMS (`notifications.channel = 'sms'`).
+
+- **Nega Eskiz:** O'zbekistonda operatorlar bilan to'g'ridan-to'g'ri ishlaydi,
+  hujjatlashtirilgan REST API si bor, hisob-kitob so'mda. Telegram boti bilan
+  bir xil naqsh qo'llanildi: platforma hisobi `.env` da, maktab xohlasa o'z
+  hisobini ulaydi (`schools.eskiz_email` / `eskiz_secret_enc`, AES-256-GCM).
+- **Nega SMS hammaga, faqat ulanmaganlarga emas:** dastlab SMS zaxira kanal
+  qilingan edi (Telegram bo'lsa SMS yo'q). Bu noto'g'ri: to'lov eslatmasi
+  O'QILISHI kerak, botdagi xabar esa yuzlab chat orasida ko'rinmay ketadi.
+  Endi SMS to'lamagan o'quvchining BARCHA raqamlariga ketadi — Telegramga
+  ulanganiga ham. Kanal tanlash emas, kanal qo'shish. Yagona istisno — raqamda
+  xabar o'chirilgan bo'lsa (`parent_phones.notify_enabled = false`).
+- **Nega avtomatik jo'natish yo'q:** eslatma har doim odam bosgan tugmadan
+  boshlanadi (`POST /debtors/:id/remind` yoki `/debtors/remind-all`).
+  Rejalashtiruvchida (`scheduler.ts`) SMS yo'q. Sabab: pul sarflaydigan va
+  oilaga boradigan xabarni kim va qachon yuborganini aniq bir odam javobgar
+  bo'lishi kerak — `audit_log` da kim bosgani yozilib qoladi.
+- **Nega tanlab yuborish:** `remind-all` `studentIds` ni qabul qiladi.
+  Ro'yxatdan kerakligini belgilab yuborish — amalda eng ko'p kerak bo'ladigan
+  holat (masalan, bugun qo'ng'iroq qilinmaganlarga).
+- **Nega o'qituvchi ham yubora oladi:** sinf rahbari ota-ona bilan eng ko'p
+  gaplashadigan odam. Lekin faqat O'Z sinfi: `teacherClassIds()` bo'yicha
+  cheklanadi, begona sinf o'quvchisining qarzi borligi ham ko'rinmaydi.
+- **Nega sukut bo'yicha o'chiq** (`settings.sms_debt_enabled`): pul sarflaydigan
+  narsa o'z-o'zidan yonmaydi. Maktab admini ataylab yoqadi.
+- **Nega faqat qarz eslatmasi:** davomat va to'lov xabarlari kuniga yuzlab
+  bo'ladi; ularni SMS ga o'tkazish maktabni sindiradi. `queueForStudent` da SMS
+  alohida so'raladi (`sms: {...}`), sukut bo'yicha yo'q.
+- **Nega matn sozlamada** (`settings.sms_debt_template`): Eskiz matnni
+  MODERATSIYADAN o'tkazadi. Kodda qotib qolgan matn tasdiqlanmasa, yangi versiya
+  chiqarmasdan tuzatib bo'lmasdi. O'rinbosarlar: `{school} {student} {amount}
+  {due}`.
+- **Nega GSM-7 hisoblanadi** (`smsParts`): lotin bo'lmagan bitta belgi — masalan
+  "oʻ" (U+02BB) yoki "№" — butun xabarni Unicode ga o'tkazadi va sig'im 160 dan
+  70 ga tushadi, ya'ni narx ikki-uch barobar oshadi. Matn oddiy apostrof (')
+  bilan yoziladi, admin esa nechta SMS ketishini saqlashdan oldin ko'radi.
+- **Nega DLR (`/api/sms/dlr/<secret>`):** "yuborildi" bilan "telefonga yetib
+  bordi" bir narsa emas. Eskiz yetkazilganlikni `provider_id` (UUID) bilan
+  aytadi; busiz "xabar berdik" degan ishonch tekshirilmaydigan bo'lib qolardi.
+- **Nega `SMS_DRY_RUN` va testda majburiy quruq rejim:** `.env` da haqiqiy kalit
+  turadi. Quruq rejimsiz `npm test` uydirma raqamlarga SMS yuborib, balansni yeb
+  qo'yardi — eng yomoni, begona odamga xabar ketardi.
+- **Ommaviy yuborish** (`POST /debtors/remind-all`) navbatga qo'yadi va fon
+  ishchisiga topshiradi: 80 ta SMS ni kutib turgan brauzer so'rovi baribir
+  uzilib ketadi. Bir o'quvchiga 20 soat ichida faqat bitta eslatma.
+
+**Eskiz tomonida qilinishi shart** (kodga bog'liq emas): hisobni sinov
+rejimidan chiqarish, jo'natuvchi nikini (`from`) tasdiqlatish va eslatma matnini
+shablon sifatida moderatsiyadan o'tkazish. Bularsiz Eskiz faqat oldindan
+tasdiqlangan sinov matnini qabul qiladi.
+
 ## Ochiq masalalar
 
 - **Kundalik.com API.** Ochiq hujjatlashtirilgan API topilmadi. Rasmiy yozishma

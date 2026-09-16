@@ -16,6 +16,7 @@ import { attendanceRoutes } from './modules/attendance/attendance.routes.js';
 import { invoicesRoutes, paymentsRoutes } from './modules/payments/payments.routes.js';
 import { debtorsRoutes } from './modules/debtors/debtors.routes.js';
 import { notificationsRoutes } from './modules/notifications/notifications.routes.js';
+import { smsRoutes, smsCallbackRoutes } from './modules/sms/sms.routes.js';
 import { libraryRoutes } from './modules/library/library.routes.js';
 import { libraryImportRoutes } from './modules/library/library.import.routes.js';
 import { auditRoutes } from './modules/audit/audit.routes.js';
@@ -37,6 +38,9 @@ api.use('/telegram', telegramRoutes);
 
 // Xodimlar boti webhooki — ham ochiq, ham alohida maxfiy segment bilan.
 api.use('/staffbot/webhook', staffBotWebhook);
+
+// Eskiz yetkazilganlik xabari (DLR): SMS provayderi uradi, tokeni yo'q.
+api.use('/sms/dlr', smsCallbackRoutes);
 
 // --- himoyalangan yo'llar ---------------------------------------------
 api.use(authenticate, resolveTenant);
@@ -61,6 +65,7 @@ api.use('/invoices', platformReadOnly, invoicesRoutes);
 api.use('/payments', platformReadOnly, paymentsRoutes);
 api.use('/debtors', platformReadOnly, debtorsRoutes);
 api.use('/notifications', platformReadOnly, notificationsRoutes);
+api.use('/sms', platformReadOnly, smsRoutes);
 // Import /library/books/:id dan OLDIN: aks holda "import" id deb talqin qilinardi.
 api.use('/library/books/import', platformReadOnly, libraryImportRoutes);
 api.use('/library', platformReadOnly, libraryRoutes);

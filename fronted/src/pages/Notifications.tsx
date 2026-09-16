@@ -5,8 +5,8 @@ import { Chip, EmptyState, ErrorState, TableSkeleton } from '../components/ui';
 
 interface Row {
   id: string; kind: string; status: string; body: string | null;
-  error: string | null; attempts: number;
-  created_at: string; sent_at: string | null;
+  error: string | null; attempts: number; channel: string;
+  created_at: string; sent_at: string | null; delivered_at: string | null;
   parent_name: string | null; parent_phone: string | null; student_name: string | null;
 }
 
@@ -23,8 +23,20 @@ const KIND_LABEL: Record<string, string> = {
   'parent.link.rejected': "Ota-ona ma'lumotni tasdiqlamadi",
 };
 
+/**
+ * Kanal — pul masalasi: SMS pullik, Telegram bepul. Qaysi biri ketgani
+ * ro'yxatda ko'rinmasa, hisobni tushuntirib bo'lmaydi.
+ */
+function channelChip(c: string) {
+  if (c === 'sms') return <Chip kind="warn">SMS</Chip>;
+  if (c === 'telegram') return <Chip kind="neutral">Telegram</Chip>;
+  return <Chip kind="neutral">{c}</Chip>;
+}
+
 /** Rang yolg'iz ma'no tashimaydi — har doim ikonka + so'z. */
-function statusChip(s: string) {
+function statusChip(s: string, deliveredAt?: string | null) {
+  // Operator tasdiqlagan yetkazish — "yubordik" dan kuchliroq dalil.
+  if (deliveredAt) return <Chip kind="good">Yetkazildi</Chip>;
   if (s === 'sent') return <Chip kind="good">Yuborildi</Chip>;
   if (s === 'queued') return <Chip kind="neutral">Navbatda</Chip>;
   if (s === 'failed') return <Chip kind="crit">Yuborilmadi</Chip>;
@@ -97,7 +109,7 @@ export default function Notifications() {
           <table className="tbl">
             <thead>
               <tr>
-                <th>Vaqt</th><th>Kimga</th><th>Turi</th><th>Matn</th><th>Holat</th><th></th>
+                <th>Vaqt</th><th>Kimga</th><th>Kanal</th><th>Turi</th><th>Matn</th><th>Holat</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -107,13 +119,17 @@ export default function Notifications() {
                   <td data-label="Kimga">
                     {n.parent_name ?? '—'}
                     {n.student_name && <div className="muted">{n.student_name}</div>}
+                    {n.channel === 'sms' && n.parent_phone && (
+                      <div className="muted num">{n.parent_phone}</div>
+                    )}
                   </td>
+                  <td data-label="Kanal">{channelChip(n.channel)}</td>
                   <td data-label="Turi">{KIND_LABEL[n.kind] ?? n.kind}</td>
                   <td data-label="Matn" style={{ whiteSpace: 'pre-line', maxWidth: '28rem' }}>
                     {n.body ?? '—'}
                   </td>
                   <td data-label="Holat">
-                    {statusChip(n.status)}
+                    {statusChip(n.status, n.delivered_at)}
                     {n.error && <div className="muted">{n.error}</div>}
                   </td>
                   <td data-label="">

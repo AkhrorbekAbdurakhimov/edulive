@@ -157,7 +157,7 @@ test('qarz eslatmasi navbatga tushadi va kuniga bir marta yuboriladi', async () 
   // Ikkinchi bosishda takror xabar ketmaydi
   const second = await api('POST', `/debtors/${studentId}/remind`, {}, school.adminToken);
   assert.equal(second.status, 400);
-  assert.match(second.body.error, /allaqachon yuborilgan/);
+  assert.match(second.body.error, /yaqinda yuborilgan/);
 });
 
 test("qarzi yo'q o'quvchiga eslatma yuborilmaydi", async () => {

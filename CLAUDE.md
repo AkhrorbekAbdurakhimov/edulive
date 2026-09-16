@@ -147,6 +147,14 @@ Kelajakka moslangan joylar (migratsiya kerak bo'lmasligi uchun):
   shartnomasi buziladi, sotiladigan mahsulot uchun huquqiy xavf.
 - **Biometrika.** Yuz orqali davomat qo'shilsa, u biometrik ma'lumot bo'ladi va
   qonun bo'yicha O'zbekistondagi serverda saqlanishi shart. RFID/QR bilan boshlang.
+- **SMS (Eskiz.uz).** Pullik kanal. Qarz eslatmasi to'lamagan o'quvchining
+  **barcha** raqamlariga ketadi — Telegramga ulanganiga ham. Sukut bo'yicha
+  **o'chiq** (`settings.sms_debt_enabled`). Avtomatik jo'natish yo'q: faqat
+  tugma orqali (admin, menejer va o'z sinfi bo'yicha o'qituvchi). Matn `settings.sms_debt_template` da va Eskiz
+  kabinetida **moderatsiyadan o'tgan** bo'lishi shart. Lotin bo'lmagan bitta
+  belgi narxni ikki barobar oshiradi — `smsParts()` bilan tekshiring. Boshqa
+  turdagi xabarlarni (davomat, to'lov) SMS ga o'tkazmang: kuniga yuzlab bo'ladi.
+  Testda `NODE_ENV=test` quruq rejimni yoqadi — buni olib tashlamang.
 - **Telegram.** Bitta bot, ko'p maktab. Maktab `/start <tg_code>` deep link orqali
   aniqlanadi. Ota-ona telefon raqamini tasdiqlaydi; bitta ota-onada bir nechta
   farzand bo'lishi mumkin — har xabar boshida farzand ismi.

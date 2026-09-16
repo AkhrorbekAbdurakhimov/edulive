@@ -51,6 +51,15 @@ services:
       TELEGRAM_STAFF_TOKEN: ${TELEGRAM_STAFF_TOKEN:-}
       TELEGRAM_STAFF_USERNAME: ${TELEGRAM_STAFF_USERNAME:-eduliveuz_bot}
       TELEGRAM_STAFF_SECRET: ${TELEGRAM_STAFF_SECRET:-}
+      # SMS — Eskiz.uz. Platforma hisobi; maktab o'z hisobini Sozlamalardan
+      # ulashi mumkin. ESKIZ_SECRET — kabinetdagi "SMS API" kodi, parol emas.
+      ESKIZ_EMAIL: ${ESKIZ_EMAIL:-}
+      ESKIZ_SECRET: ${ESKIZ_SECRET:-}
+      # Eskizda tasdiqlangan nik; 4546 — sinov niki.
+      ESKIZ_FROM: ${ESKIZ_FROM:-4546}
+      # Yetkazilganlik xabari (DLR) manzilidagi maxfiy segment.
+      # Bo'sh bo'lsa callback so'ralmaydi — fail-closed.
+      ESKIZ_CALLBACK_SECRET: ${ESKIZ_CALLBACK_SECRET:-}
       ATTENDANCE_EDIT_WINDOW_HOURS: ${ATTENDANCE_EDIT_WINDOW_HOURS:-3}
       BACKUP_DIR: /app/backups
     volumes:

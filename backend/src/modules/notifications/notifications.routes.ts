@@ -28,8 +28,9 @@ notificationsRoutes.get(
 
     const { rows } = await pool.query(
       `SELECT n.id, n.kind, n.status, n.body, n.error, n.attempts,
-              n.created_at, n.sent_at,
-              p.full_name AS parent_name, pp.phone AS parent_phone,
+              n.created_at, n.sent_at, n.channel, n.delivered_at,
+              p.full_name AS parent_name,
+              COALESCE(n.to_phone, pp.phone) AS parent_phone,
               s.last_name || ' ' || s.first_name AS student_name,
               count(*) OVER()::int AS total_count
          FROM notifications n

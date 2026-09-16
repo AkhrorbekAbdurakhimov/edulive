@@ -34,6 +34,10 @@ jobs:
       # Bot tokenlari shu kalit bilan shifrlanadi; kalitsiz telegram testlari
       # "SECRET_KEY sozlanmagan" deb yiqiladi. Testda ixtiyoriy 32 bayt.
       SECRET_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
+      # Soxta Eskiz hisobi: busiz SMS testlari "hisob ulanmagan" deb yiqiladi.
+      # NODE_ENV=test quruq rejimni yoqadi — tarmoqqa umuman chiqilmaydi.
+      ESKIZ_EMAIL: ci@example.com
+      ESKIZ_SECRET: ci_fake_eskiz_secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -50,6 +50,24 @@ export const env = {
   // Kunlik pg_dump shu papkaga tushadi (cron), bot shu yerdan oxirgisini oladi.
   backupDir: process.env.BACKUP_DIR ?? './backups',
 
+  /**
+   * SMS — Eskiz.uz. Platforma hisobi; maktab o'z hisobini ulasa o'shaniki
+   * ishlatiladi (schools.eskiz_*). Ikkalasi ham bo'lmasa SMS jimgina o'chiq.
+   *
+   * `secret` — Eskiz kabinetidagi "SMS API" bo'limidan olinadigan maxfiy kod
+   * (login paroli EMAS).
+   */
+  eskiz: {
+    email: process.env.ESKIZ_EMAIL ?? '',
+    secret: process.env.ESKIZ_SECRET ?? '',
+    // Moderatsiyadan o'tgan jo'natuvchi nomi. 4546 — Eskizning sinov niki:
+    // u bilan faqat tasdiqlangan sinov matnlari ketadi.
+    from: process.env.ESKIZ_FROM ?? '4546',
+    // Yetkazilganlik xabari (DLR) shu maxfiy segmentli manzilga keladi.
+    // Bo'sh bo'lsa callback so'ralmaydi — fail-closed.
+    callbackSecret: process.env.ESKIZ_CALLBACK_SECRET ?? '',
+  },
+
 
   // O'qituvchi davomatni necha soat ichida o'zi tuzata oladi.
   attendanceEditWindowHours: Number(process.env.ATTENDANCE_EDIT_WINDOW_HOURS ?? 3),

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth, roleLabel, type User } from '../lib/auth';
 import { initials } from '../components/ui';
+import SmsSettings from '../components/SmsSettings';
 
 export default function Settings() {
   return (
@@ -14,6 +15,7 @@ export default function Settings() {
       <TelegramLink />
       <ChangePassword />
       <SchoolSettings />
+      <SmsSettings />
     </div>
   );
 }

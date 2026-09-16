@@ -140,6 +140,10 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .tbl tbody tr.clickable:hover { background: var(--surface-2); cursor: pointer; }
 .tbl .right { text-align: right; }
 
+/* Tanlash ustuni — jadval boshida, tor. */
+.tbl .pick-col { width: 36px; padding-right: 0; }
+.tbl .pick-col input { width: 18px; height: 18px; cursor: pointer; }
+
 /* <640px: jadval kartaga aylanadi — gorizontal scroll YO'Q */
 @media (max-width: 639px) {
   .tbl thead { display: none; }
@@ -150,6 +154,9 @@ table.tbl { width: 100%; border-collapse: collapse; }
     content: attr(data-label); color: var(--t3); font-size: 12px; font-weight: 500;
   }
   .tbl .right { text-align: inherit; }
+  /* Kartada belgilash katagi tepada, o'ng chetda yolg'iz qolmasin. */
+  .tbl .pick-col { width: auto; justify-content: flex-start; padding-bottom: 6px; }
+  .tbl td.pick-col::before { content: 'Tanlash'; order: 2; align-self: center; }
 }
 
 /* ---------------------------------------------------------------- states */
@@ -386,6 +393,22 @@ table.tbl { width: 100%; border-collapse: collapse; }
   background: var(--surface-3); border: 1px solid var(--border);
   border-radius: var(--r-control); padding: 6px 10px;
   overflow-wrap: anywhere; max-width: 100%;
+}
+
+/* SMS hisobi — sozlamalar kartasi ichidagi alohida blok. */
+.sms-account { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.sms-account h3 { font-size: 14px; font-weight: 600; margin: 0 0 8px; color: var(--t1); }
+.sms-account .row { gap: 8px; flex-wrap: wrap; }
+.sms-account .row .input { flex: 1 1 12rem; min-width: 0; }
+
+/* SMS matni oldindan ko'rinishi — telefonda qanday ko'rinsa shunday.
+   Matn AYNAN shu holda ketadi: har bir belgi pulga ta'sir qiladi. */
+.sms-preview {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+  line-height: 1.5; color: var(--t1);
+  background: var(--surface-3); border: 1px solid var(--border);
+  border-radius: var(--r-control); padding: 10px 12px; margin: 8px 0 0;
+  overflow-wrap: anywhere; white-space: pre-wrap;
 }
 
 /* ---------------------------------------------------------------- mas'ul shaxslar
