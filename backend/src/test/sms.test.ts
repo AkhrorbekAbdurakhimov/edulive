@@ -84,17 +84,28 @@ test("sukutdagi shablon bitta SMS ga sig'adi", () => {
 
 // ---------------------------------------------------------------- eslatma
 
-test("SMS o'chiq bo'lsa, ulanmagan ota-onaga xabar ketmaydi", async () => {
-  const r = await api('POST', `/debtors/${smsStudent}/remind`, undefined, school.adminToken);
+test("SMS o'chiq bo'lsa, SMS tugmasi nima qilish kerakligini aytadi", async () => {
+  const r = await api('POST', `/debtors/${smsStudent}/remind`, { channel: 'sms' }, school.adminToken);
   assert.equal(r.status, 400);
-  assert.match(r.body.error, /Telegram botga ulanmagan/);
+  assert.match(r.body.error, /Sozlamalar > SMS/);
+});
+
+test("kanal ko'rsatilmasa so'rov rad etiladi", async () => {
+  const r = await api('POST', `/debtors/${smsStudent}/remind`, {}, school.adminToken);
+  assert.equal(r.status, 400, 'kanalsiz yuborish ikkilanish qoldiradi — taqiqlanadi');
+});
+
+test('botga ulanmagan ota-onaga Telegram xabari ketmaydi', async () => {
+  const r = await api('POST', `/debtors/${smsStudent}/remind`, { channel: 'telegram' }, school.adminToken);
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /botga ulanmagan/);
 });
 
 test('SMS yoqilgach eslatma SMS kanaliga tushadi va jo\'natiladi', async () => {
   const on = await api('PATCH', '/school/settings', { sms_debt_enabled: true }, school.adminToken);
   assert.equal(on.status, 200);
 
-  const r = await api('POST', `/debtors/${smsStudent}/remind`, undefined, school.adminToken);
+  const r = await api('POST', `/debtors/${smsStudent}/remind`, { channel: 'sms' }, school.adminToken);
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.sms, 1);
   assert.equal(r.body.telegram, 0);
@@ -112,17 +123,23 @@ test('SMS yoqilgach eslatma SMS kanaliga tushadi va jo\'natiladi', async () => {
   assert.ok(smsParts(rows[0].body).parts === 1, 'SMS matni bitta qismga sig\'ishi kerak');
 });
 
-test('yaqinda eslatma olgan o\'quvchiga ikkinchi marta yuborilmaydi', async () => {
-  const r = await api('POST', `/debtors/${smsStudent}/remind`, undefined, school.adminToken);
+test('shu KANALDAN yaqinda olgan o\'quvchiga ikkinchi marta yuborilmaydi', async () => {
+  const r = await api('POST', `/debtors/${smsStudent}/remind`, { channel: 'sms' }, school.adminToken);
   assert.equal(r.status, 400);
-  assert.match(r.body.error, /yaqinda yuborilgan/);
+  assert.match(r.body.error, /SMS yaqinda yuborilgan/);
 });
 
-test("Telegramga ulangan ota-ona ham SMS oladi — kanallar qo'shiladi", async () => {
-  const r = await api('POST', `/debtors/${tgStudent}/remind`, undefined, school.adminToken);
-  assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal(r.body.telegram, 1);
-  assert.equal(r.body.sms, 1, "to'lov eslatmasi Telegram holatiga bog'liq emas");
+test("Har kanal ALOHIDA ketadi: biri ikkinchisini bloklamaydi", async () => {
+  const tg = await api('POST', `/debtors/${tgStudent}/remind`, { channel: 'telegram' }, school.adminToken);
+  assert.equal(tg.status, 200, JSON.stringify(tg.body));
+  assert.equal(tg.body.telegram, 1);
+  assert.equal(tg.body.sms, 0, 'Telegram tugmasi SMS yubormasligi kerak');
+
+  // Telegram ketgani SMS ni to'smaydi: bu ikki alohida qaror.
+  const sms = await api('POST', `/debtors/${tgStudent}/remind`, { channel: 'sms' }, school.adminToken);
+  assert.equal(sms.status, 200, JSON.stringify(sms.body));
+  assert.equal(sms.body.sms, 1, 'Telegram ketgani SMS ni bloklamasligi kerak');
+  assert.equal(sms.body.telegram, 0);
 
   const { rows } = await pool.query(
     `SELECT channel FROM notifications WHERE student_id = $1 AND kind = 'debt.reminder'
@@ -135,7 +152,7 @@ test("Telegramga ulangan ota-ona ham SMS oladi — kanallar qo'shiladi", async (
 // ---------------------------------------------------------------- ommaviy
 
 test("ro'yxatga yuborishda yaqinda eslatma olganlar o'tkazib yuboriladi", async () => {
-  const r = await api('POST', '/debtors/remind-all', { overdueOnly: false }, school.adminToken);
+  const r = await api('POST', '/debtors/remind-all', { channel: 'sms', overdueOnly: false }, school.adminToken);
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.students, 2);
   assert.equal(r.body.skipped, 2, 'ikkalasi ham yuqoridagi testlarda eslatma olgan');
@@ -148,7 +165,7 @@ test("ommaviy yuborish yangi qarzdorga ishlaydi", async () => {
   ).studentId;
   await api('POST', '/invoices/generate', { periodMonth: '2026-10' }, school.adminToken);
 
-  const r = await api('POST', '/debtors/remind-all', { overdueOnly: false }, school.adminToken);
+  const r = await api('POST', '/debtors/remind-all', { channel: 'sms', overdueOnly: false }, school.adminToken);
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.sms, 1, 'faqat yangi o\'quvchiga SMS ketishi kerak');
 
@@ -169,7 +186,7 @@ test("xabari o'chirilgan raqamga SMS ham ketmaydi", async () => {
   );
   await api('POST', '/invoices/generate', { periodMonth: '2026-09' }, school.adminToken);
 
-  const r = await api('POST', `/debtors/${quiet}/remind`, undefined, school.adminToken);
+  const r = await api('POST', `/debtors/${quiet}/remind`, { channel: 'sms' }, school.adminToken);
   assert.equal(r.status, 400, JSON.stringify(r.body));
 });
 
@@ -200,12 +217,12 @@ test("o'qituvchi faqat O'Z sinfidagi qarzdorlarni ko'radi va ularga yuboradi", a
   );
 
   // Begona o'quvchiga eslatma yubora olmaydi — qarzi borligi ham aytilmaydi.
-  const blocked = await api('POST', `/debtors/${outsider}/remind`, undefined, school.teacherToken);
+  const blocked = await api('POST', `/debtors/${outsider}/remind`, { channel: 'sms' }, school.teacherToken);
   assert.equal(blocked.status, 400);
 
   // Ommaviy yuborishda ham begona o'quvchi qamrab olinmaydi.
   const bulk = await api(
-    'POST', '/debtors/remind-all', { studentIds: [outsider] }, school.teacherToken,
+    'POST', '/debtors/remind-all', { channel: 'sms', studentIds: [outsider] }, school.teacherToken,
   );
   assert.equal(bulk.status, 200, JSON.stringify(bulk.body));
   assert.equal(bulk.body.students, 0);
@@ -215,7 +232,7 @@ test("o'qituvchi faqat O'Z sinfidagi qarzdorlarni ko'radi va ularga yuboradi", a
     await createTestStudent(school, 'Mening', 'Shogirdim', { parentPhone: '+998901110011' })
   ).studentId;
   await api('POST', '/invoices/generate', { periodMonth: '2026-09' }, school.adminToken);
-  const ok = await api('POST', `/debtors/${mine}/remind`, undefined, school.teacherToken);
+  const ok = await api('POST', `/debtors/${mine}/remind`, { channel: 'sms' }, school.teacherToken);
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
   assert.equal(ok.body.sms, 1);
 });
@@ -229,7 +246,7 @@ test("tanlangan o'quvchilarga yuborish faqat o'shalarga tegadi", async () => {
   ).studentId;
   await api('POST', '/invoices/generate', { periodMonth: '2026-09' }, school.adminToken);
 
-  const r = await api('POST', '/debtors/remind-all', { studentIds: [a] }, school.adminToken);
+  const r = await api('POST', '/debtors/remind-all', { channel: 'sms', studentIds: [a] }, school.adminToken);
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.students, 1);
   assert.equal(r.body.sms, 1);

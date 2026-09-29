@@ -16,7 +16,8 @@ export default function Login() {
     setBusy(true);
     try {
       await login(phone.trim(), password);
-      navigate('/dashboard', { replace: true });
+      // Qayerga tushishini `Home` hal qiladi — rol bo'yicha qaror bitta joyda.
+      navigate('/', { replace: true });
     } catch (err: any) {
       setError(err?.response?.data?.error ?? 'Kirishda xatolik. Internetni tekshiring');
     } finally {

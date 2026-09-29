@@ -17,6 +17,37 @@ input, select, textarea { font: inherit; color: var(--t1); }
   font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
   color: var(--brand-ink); padding: 8px 12px 20px;
 }
+/* Maktab brendi — yon menyu sarlavhasida.
+   Nom uzun bo'lsa ikki qatorga sig'adi va kesiladi: 240px yon menyuni
+   cho'zib yuborgan maktab nomi butun tartibni buzardi. */
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px; min-width: 0; }
+.brand-text { display: flex; flex-direction: column; min-width: 0; }
+.brand-school {
+  font-size: 14px; font-weight: 600; color: var(--t1); line-height: 1.25;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere;
+}
+.brand-platform {
+  font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--brand-ink); margin-top: 2px;
+}
+.brand-logo {
+  width: 32px; height: 32px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+  background: var(--surface-3);
+}
+.brand-logo.sm { width: 22px; height: 22px; border-radius: 6px; }
+/* Logotipsiz maktab uchun harflar — bo'sh to'rtburchak "yuklanmadi" ga o'xshaydi. */
+.brand-logo.mark-text {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--brand-soft); color: var(--brand-ink);
+  font-size: 13px; font-weight: 700; letter-spacing: -.02em;
+}
+.brand-logo.sm.mark-text { font-size: 10px; }
+
+/* Yuqori paneldagi nusxa faqat telefonda kerak (yon menyu yashirilganda). */
+.topbar-brand { display: none; align-items: center; gap: 8px; min-width: 0; }
+.topbar-brand .brand-school { font-size: 14px; -webkit-line-clamp: 1; }
+
 .sidebar-nav { display: flex; flex-direction: column; gap: 2px; }
 /* Sozlamalar pastga qadaladi — kundalik ish bo'limlari bilan aralashmasin. */
 .sidebar-footer {
@@ -139,6 +170,9 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .tbl tbody tr:last-child td { border-bottom: 0; }
 .tbl tbody tr.clickable:hover { background: var(--surface-2); cursor: pointer; }
 .tbl .right { text-align: right; }
+
+/* Kanal tugmalari — yonma-yon, tor ustunda ham sinmaydi. */
+.send-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* Tanlash ustuni — jadval boshida, tor. */
 .tbl .pick-col { width: 36px; padding-right: 0; }
@@ -294,7 +328,14 @@ table.tbl { width: 100%; border-collapse: collapse; }
   .topbar .who strong, .topbar .school-name {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
   }
-  .topbar .who strong { max-width: 34vw; }
+  /* Yon menyu yashiringan — maktab nomi shu yerda ko'rinadi.
+     Foydalanuvchi ismi esa umuman olib tashlanadi: o'z telefonida kim ekanini
+     odam biladi, qaysi maktabda ishlayotgani esa ko'rinib turishi kerak.
+     Ikkalasi bir qatorda sig'maydi — ikkalasi ham o'qib bo'lmas holga kelardi.
+     Ism va rol "Sozlamalar > Profil" da turibdi. */
+  .topbar-brand { display: flex; }
+  .topbar-brand .brand-school { max-width: 52vw; }
+  .topbar .who { display: none; }
   .topbar .chip { min-width: 0; max-width: 42vw; }
   .topbar .school-name { display: inline-block; max-width: 100%; }
 }

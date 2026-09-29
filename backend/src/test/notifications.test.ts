@@ -129,7 +129,7 @@ test("chat_id yo'q bo'lsa sabab yoziladi (qayta urinilmaydi)", async () => {
 });
 
 test('qarz eslatmasi: botga ulanmagan bo\'lsa tushunarli xato qaytadi', async () => {
-  const res = await api('POST', `/debtors/${studentId}/remind`, {}, school.adminToken);
+  const res = await api('POST', `/debtors/${studentId}/remind`, { channel: 'telegram' }, school.adminToken);
   assert.equal(res.status, 400, JSON.stringify(res.body));
   assert.match(res.body.error, /botga ulanmagan/);
 });
@@ -142,7 +142,7 @@ test('qarz eslatmasi navbatga tushadi va kuniga bir marta yuboriladi', async () 
     [parentId],
   );
 
-  const first = await api('POST', `/debtors/${studentId}/remind`, {}, school.adminToken);
+  const first = await api('POST', `/debtors/${studentId}/remind`, { channel: 'telegram' }, school.adminToken);
   assert.equal(first.status, 200, JSON.stringify(first.body));
   assert.equal(first.body.queued, 1);
 
@@ -155,14 +155,14 @@ test('qarz eslatmasi navbatga tushadi va kuniga bir marta yuboriladi', async () 
   assert.match(rows[0].body, /499 000 so'm/, rows[0].body);
 
   // Ikkinchi bosishda takror xabar ketmaydi
-  const second = await api('POST', `/debtors/${studentId}/remind`, {}, school.adminToken);
+  const second = await api('POST', `/debtors/${studentId}/remind`, { channel: 'telegram' }, school.adminToken);
   assert.equal(second.status, 400);
-  assert.match(second.body.error, /yaqinda yuborilgan/);
+  assert.match(second.body.error, /Telegram xabari yaqinda yuborilgan/);
 });
 
 test("qarzi yo'q o'quvchiga eslatma yuborilmaydi", async () => {
   const clean = await createTestStudent(school, 'Qarzsiz', 'Vali');
-  const res = await api('POST', `/debtors/${clean.studentId}/remind`, {}, school.adminToken);
+  const res = await api('POST', `/debtors/${clean.studentId}/remind`, { channel: 'telegram' }, school.adminToken);
   assert.equal(res.status, 400);
   assert.match(res.body.error, /qarz yo'q/);
 });

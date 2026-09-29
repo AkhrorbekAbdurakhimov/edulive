@@ -175,20 +175,24 @@ export interface StudentNotification {
   studentId: string;
   /** attendance.absent | payment.received | book.issued ... */
   kind: string;
-  body: string;
   payload?: Record<string, unknown>;
   /**
-   * Botga ULANMAGAN raqamlarga SMS yuborilsinmi. Sukut bo'yicha yo'q: SMS
-   * pullik, har bir davomat xabari uchun pul to'lash maktabni sindiradi.
-   * SMS BARCHA raqamlarga ketadi — Telegramga ulangan ota-onaga ham.
-   * Sukut bo'yicha o'chiq: SMS pullik, har bir davomat xabari uchun pul
-   * to'lash maktabni sindiradi. Faqat ataylab tanlangan joyda (qarz
-   * eslatmasi) yoqiladi.
+   * Telegram matni. BERILMASA Telegramga yozilmaydi.
+   *
+   * Ikkala kanal ham ixtiyoriy va bir-biridan mustaqil: qarz eslatmasini
+   * ma'mur "Telegramga" yoki "SMS" deb ALOHIDA yuboradi. Bitta tugma
+   * ikkalasini ham jo'natganda, pul ketadigan kanal bilan bepulini
+   * ajratib bo'lmasdi.
    */
-  sms?: {
-    /** SMS matni alohida: 160 belgiga sig'ishi va tasdiqlangan shablonga mos bo'lishi kerak. */
-    body: string;
-  };
+  body?: string;
+  /**
+   * SMS matni. BERILMASA SMS yozilmaydi.
+   *
+   * Alohida matn: 160 belgiga sig'ishi va Eskizda tasdiqlangan shablonga
+   * mos bo'lishi kerak. SMS barcha raqamlarga ketadi — Telegramga ulangan
+   * ota-onaga ham.
+   */
+  sms?: { body: string };
 }
 
 export interface QueueResult {
@@ -207,11 +211,23 @@ export interface QueueResult {
  *
  * SMS esa BARCHA raqamlarga — Telegramga ulanganiga ham. Sabab: to'lov
  * eslatmasi o'qilishi kerak, botdagi xabar esa yuzlab boshqa chat orasida
- * ko'rilmay qolishi mumkin. Ota-ona ikkala xabarni ham olsa, bu takror emas —
- * bu eslatma. Kanal tanlash emas, kanal QO'SHISH.
+ * ko'rilmay qolishi mumkin.
+ *
+ * Qaysi kanal ishlashini CHAQIRUVCHI hal qiladi: `body` bersa Telegram,
+ * `sms` bersa SMS, ikkalasini bersa ikkalasi. Shu sababli ma'mur qarz
+ * eslatmasini "Telegramga" va "SMS" deb alohida yubora oladi.
  */
 export async function queueForStudent(db: Db, n: StudentNotification): Promise<QueueResult> {
-  const tg = await db.query(
+  const result: QueueResult = { telegram: 0, sms: 0 };
+
+  if (n.body) result.telegram = await queueTelegram(db, n, n.body);
+  if (n.sms) result.sms = await queueSms(db, n, n.sms.body);
+
+  return result;
+}
+
+async function queueTelegram(db: Db, n: StudentNotification, body: string): Promise<number> {
+  const { rowCount } = await db.query(
     `INSERT INTO notifications (school_id, parent_id, parent_phone_id, student_id, kind, payload, body, channel, to_phone)
      SELECT $1, p.id, pp.id, $2, $3, $4::jsonb, $5, 'telegram', pp.phone
        FROM student_parents sp
@@ -221,12 +237,13 @@ export async function queueForStudent(db: Db, n: StudentNotification): Promise<Q
         AND pp.notify_enabled
         AND pp.telegram_chat_id IS NOT NULL
         AND pp.telegram_verified_at IS NOT NULL`,
-    [n.schoolId, n.studentId, n.kind, JSON.stringify(n.payload ?? {}), n.body],
+    [n.schoolId, n.studentId, n.kind, JSON.stringify(n.payload ?? {}), body],
   );
+  return rowCount ?? 0;
+}
 
-  if (!n.sms) return { telegram: tg.rowCount ?? 0, sms: 0 };
-
-  const sms = await db.query(
+async function queueSms(db: Db, n: StudentNotification, body: string): Promise<number> {
+  const { rowCount } = await db.query(
     `INSERT INTO notifications (school_id, parent_id, parent_phone_id, student_id, kind, payload, body, channel, to_phone)
      SELECT $1, p.id, pp.id, $2, $3, $4::jsonb, $5, 'sms', pp.phone
        FROM student_parents sp
@@ -236,10 +253,9 @@ export async function queueForStudent(db: Db, n: StudentNotification): Promise<Q
         -- Yagona shart — raqam xabarni o'chirmagan bo'lsin. Telegram holati
         -- ahamiyatsiz: SMS unga BOG'LIQ EMAS.
         AND pp.notify_enabled`,
-    [n.schoolId, n.studentId, n.kind, JSON.stringify(n.payload ?? {}), n.sms.body],
+    [n.schoolId, n.studentId, n.kind, JSON.stringify(n.payload ?? {}), body],
   );
-
-  return { telegram: tg.rowCount ?? 0, sms: sms.rowCount ?? 0 };
+  return rowCount ?? 0;
 }
 
 let timer: NodeJS.Timeout | null = null;

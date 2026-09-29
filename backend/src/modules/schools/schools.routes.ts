@@ -330,6 +330,27 @@ schoolsPlatformRoutes.delete(
 export const schoolRoutes = Router();
 schoolRoutes.use(requireTenant);
 
+/**
+ * Maktab nomi va logotipi — interfeys sarlavhasi uchun.
+ *
+ * Nega `/school` dan alohida: u admin va menejerga cheklangan va `settings`
+ * ni ham qaytaradi (to'lov muddati, SMS matni). Nomi va logotipi esa har bir
+ * xodimga kerak — o'qituvchi ham qaysi maktabda ishlayotganini ko'rishi
+ * kerak. Rol tekshiruvi yo'q, lekin `requireTenant` bor: begona maktabnikini
+ * baribir ololmaydi.
+ */
+schoolRoutes.get(
+  '/brand',
+  ah(async (req, res) => {
+    const { rows } = await pool.query<{ id: string; name: string; logo_url: string | null }>(
+      `SELECT id, name, logo_url FROM schools WHERE id = $1`,
+      [req.schoolId],
+    );
+    if (!rows[0]) throw notFound('Maktab topilmadi');
+    res.json(rows[0]);
+  }),
+);
+
 schoolRoutes.get(
   '/',
   requireRole('admin', 'manager'),

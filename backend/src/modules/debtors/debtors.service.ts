@@ -11,8 +11,11 @@ import { uzDate } from '../../utils/date.js';
 import { queueForStudent, type QueueResult } from '../notifications/notifications.service.js';
 import { smsParts } from '../sms/sms.service.js';
 
-/** Bir o'quvchiga shu soat ichida faqat bitta eslatma. */
+/** Bir o'quvchiga, HAR KANAL bo'yicha, shu soat ichida faqat bitta eslatma. */
 const COOLDOWN_HOURS = 20;
+
+/** Qarz eslatmasi qaysi kanal orqali ketadi. */
+export type Channel = 'telegram' | 'sms';
 
 /**
  * SMS matni sukut bo'yicha. Maktab `settings.sms_debt_template` orqali o'zini
@@ -132,36 +135,50 @@ export function smsBody(tpl: string, school: string, d: DebtRow): string {
 }
 
 /**
- * Yaqinda eslatma olgan o'quvchilar. Tugma ikki marta bosilsa yoki ro'yxat
- * ikki marta yuborilsa, ota-ona ikkita bir xil xabar (va maktab ikki baravar
- * hisob) olmasligi kerak.
+ * Shu kanaldan yaqinda eslatma olgan o'quvchilar. Tugma ikki marta bosilsa
+ * yoki ro'yxat ikki marta yuborilsa, ota-ona ikkita bir xil xabar (va maktab
+ * ikki baravar hisob) olmasligi kerak.
+ *
+ * Nega KANAL bo'yicha: Telegramga yuborib, keyin SMS yuborish — bitta ish
+ * emas, ikkita alohida qaror. Umumiy hisoblansa, Telegram yuborilgandan
+ * keyin SMS tugmasi ishlamay qolardi.
  */
-export async function recentlyReminded(db: Db, schoolId: string, ids: string[]): Promise<Set<string>> {
+export async function recentlyReminded(
+  db: Db,
+  schoolId: string,
+  ids: string[],
+  channel: Channel,
+): Promise<Set<string>> {
   if (!ids.length) return new Set();
   const { rows } = await db.query<{ student_id: string }>(
     `SELECT DISTINCT student_id FROM notifications
       WHERE school_id = $1 AND kind = 'debt.reminder'
         AND student_id = ANY($2::uuid[])
+        AND channel = $4
         AND created_at > now() - (interval '1 hour' * $3)`,
-    [schoolId, ids, COOLDOWN_HOURS],
+    [schoolId, ids, COOLDOWN_HOURS, channel],
   );
   return new Set(rows.map((r) => r.student_id));
 }
 
-/** Bitta o'quvchiga eslatma navbatga qo'yadi. */
+/** Bitta o'quvchiga, BITTA kanal orqali eslatma navbatga qo'yadi. */
 export async function queueReminder(
   db: Db,
   schoolId: string,
   d: DebtRow,
   m: SchoolMessaging,
+  channel: Channel,
 ): Promise<QueueResult> {
+  const payload = { outstanding: d.outstanding, oldest_due: d.oldest_due };
   return queueForStudent(db, {
     schoolId,
     studentId: d.student_id,
     kind: 'debt.reminder',
-    body: telegramBody(d),
-    payload: { outstanding: d.outstanding, oldest_due: d.oldest_due },
-    sms: m.smsEnabled ? { body: smsBody(m.smsTemplate, m.name, d) } : undefined,
+    payload,
+    // Faqat so'ralgan kanal to'ldiriladi — ikkinchisi umuman yozilmaydi.
+    ...(channel === 'telegram'
+      ? { body: telegramBody(d) }
+      : { sms: { body: smsBody(m.smsTemplate, m.name, d) } }),
   });
 }
 

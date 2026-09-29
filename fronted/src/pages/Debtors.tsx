@@ -10,15 +10,25 @@ interface DebtorRow {
   parent_name: string | null; parent_phone: string | null;
 }
 
-interface RemindResult { queued: number; telegram: number; sms: number }
+/**
+ * Kanal — ALOHIDA amal, tanlov emas.
+ *
+ * Telegram bepul, lekin faqat botga ulangan ota-onaga yetadi. SMS pullik,
+ * lekin hammaga boradi. Bitta tugma ikkalasini birdan yuborsa, ma'mur qancha
+ * pul sarflaganini bilmaydi va "qaysi biri ketdi?" degan savolga javob
+ * qolmaydi — shuning uchun har kanal o'z tugmasi bilan.
+ */
+type Channel = 'telegram' | 'sms';
 
-interface BulkResult {
-  students: number; skipped: number; noContact: number; telegram: number; sms: number;
+interface RemindResult { channel: Channel; telegram: number; sms: number }
+
+interface BulkResult extends RemindResult {
+  students: number; skipped: number; noContact: number;
 }
 
-interface SmsPreview {
-  enabled: boolean; example: string; parts: number; unicode: boolean;
-}
+interface SmsPreview { enabled: boolean; example: string; parts: number; unicode: boolean }
+
+const CHANNEL_LABEL: Record<Channel, string> = { telegram: 'Telegram', sms: 'SMS' };
 
 /** Muddati o'tgan davr — xavf darajasi. Rang HAR DOIM ikonka + so'z bilan. */
 function riskChip(oldestDue: string | null) {
@@ -30,20 +40,11 @@ function riskChip(oldestDue: string | null) {
   return <Chip kind="warn">1 oydan kam</Chip>;
 }
 
-/** "Telegram: 1 · SMS: 2" — qaysi kanaldan ketgani aytiladi: SMS pullik. */
-function channels(r: { telegram: number; sms: number }): string {
-  const parts = [];
-  if (r.telegram) parts.push(`Telegram: ${r.telegram}`);
-  if (r.sms) parts.push(`SMS: ${r.sms}`);
-  return parts.join(' · ');
-}
-
 export default function Debtors() {
-  // Qaysi o'quvchiga eslatma ketgani/xatosi — qatorning o'zida ko'rinadi.
+  // Qaysi o'quvchiga, qaysi kanaldan ketgani/xatosi — qatorning o'zida.
   const [note, setNote] = useState<Record<string, string>>({});
-  // Tanlanganlar. Bo'sh bo'lsa "hammaga" degani.
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulk, setBulk] = useState<Channel | null>(null);
 
   const q = useQuery({
     queryKey: ['debtors'],
@@ -51,21 +52,30 @@ export default function Debtors() {
       (await api.get<{ items: DebtorRow[]; total: number; totalOutstanding: number }>('/debtors')).data,
   });
 
+  const sms = useQuery({
+    queryKey: ['sms-preview'],
+    queryFn: async () => (await api.get<SmsPreview>('/debtors/sms-preview')).data,
+  });
+
   const remind = useMutation({
-    mutationFn: async (studentId: string) =>
-      (await api.post(`/debtors/${studentId}/remind`)).data as RemindResult,
-    onSuccess: (d, id) =>
-      setNote((n) => ({ ...n, [id]: `✓ Yuborildi — ${channels(d) || d.queued}` })),
-    onError: (e: unknown, id) =>
+    mutationFn: async (v: { studentId: string; channel: Channel }) =>
+      (await api.post(`/debtors/${v.studentId}/remind`, { channel: v.channel })).data as RemindResult,
+    onSuccess: (d, v) =>
+      setNote((n) => ({
+        ...n,
+        [v.studentId]: `✓ ${CHANNEL_LABEL[d.channel]}: ${d.telegram + d.sms} ta`,
+      })),
+    onError: (e: unknown, v) =>
       setNote((n) => ({
         ...n,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        [id]: `✕ ${(e as any)?.response?.data?.error ?? 'Yuborilmadi'}`,
+        [v.studentId]: `✕ ${(e as any)?.response?.data?.error ?? 'Yuborilmadi'}`,
       })),
   });
 
   const rows = q.data?.items ?? [];
   const allPicked = rows.length > 0 && rows.every((r) => picked.has(r.student_id));
+  const smsOff = sms.data?.enabled === false;
 
   const toggle = (id: string) =>
     setPicked((s) => {
@@ -74,32 +84,47 @@ export default function Debtors() {
       return next;
     });
 
-  const toggleAll = () =>
-    setPicked(allPicked ? new Set() : new Set(rows.map((r) => r.student_id)));
+  const busy = (id: string, c: Channel) =>
+    remind.isPending && remind.variables?.studentId === id && remind.variables?.channel === c;
 
   return (
     <div className="page">
       <div className="page-head">
         <h1>Qarzdorlar</h1>
-        <div className="row" style={{ alignItems: 'center', gap: 12 }}>
+        <div className="row" style={{ alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           {q.data && (
             <span className="muted">
               {q.data.total} o'quvchi · jami <strong className="num">{money(q.data.totalOutstanding)}</strong>
             </span>
           )}
           {rows.length > 0 && (
-            <button className="btn btn-primary sm" onClick={() => setBulkOpen(true)}>
-              {picked.size > 0 ? `Tanlanganlarga eslatma (${picked.size})` : 'Hammaga eslatma'}
-            </button>
+            <>
+              <span className="muted">
+                {picked.size > 0 ? `${picked.size} ta tanlandi —` : 'Hammaga —'}
+              </span>
+              <button className="btn btn-secondary sm" onClick={() => setBulk('telegram')}>
+                Telegram
+              </button>
+              <button
+                className="btn btn-primary sm"
+                onClick={() => setBulk('sms')}
+                disabled={smsOff}
+                title={smsOff ? "SMS o'chiq — Sozlamalar > SMS" : undefined}
+              >
+                SMS
+              </button>
+            </>
           )}
         </div>
       </div>
 
-      {bulkOpen && (
+      {bulk && (
         <BulkRemind
+          channel={bulk}
           studentIds={picked.size > 0 ? [...picked] : null}
+          preview={sms.data}
           onClose={(sent) => {
-            setBulkOpen(false);
+            setBulk(null);
             if (sent) setPicked(new Set());
             q.refetch();
           }}
@@ -123,12 +148,14 @@ export default function Debtors() {
               <tr>
                 <th className="pick-col">
                   <input
-                    type="checkbox" checked={allPicked} onChange={toggleAll}
+                    type="checkbox" checked={allPicked}
+                    onChange={() => setPicked(allPicked ? new Set() : new Set(rows.map((r) => r.student_id)))}
                     aria-label="Hammasini tanlash"
                   />
                 </th>
                 <th>F.I.Sh</th><th>Sinf</th><th className="right">Qarz</th>
-                <th>Muddati o'tgan</th><th>Eng eski muddat</th><th>Ota-ona</th><th></th>
+                <th>Muddati o'tgan</th><th>Eng eski muddat</th><th>Ota-ona</th>
+                <th>Eslatma</th>
               </tr>
             </thead>
             <tbody>
@@ -154,14 +181,24 @@ export default function Debtors() {
                       ? <>{d.parent_name}<div className="muted num">{d.parent_phone}</div></>
                       : <span className="muted">qo'shilmagan</span>}
                   </td>
-                  <td data-label="">
-                    <button
-                      className="btn btn-secondary sm"
-                      onClick={() => remind.mutate(d.student_id)}
-                      disabled={remind.isPending && remind.variables === d.student_id}
-                    >
-                      Eslatma yuborish
-                    </button>
+                  <td data-label="Eslatma">
+                    <div className="send-buttons">
+                      <button
+                        className="btn btn-secondary sm"
+                        onClick={() => remind.mutate({ studentId: d.student_id, channel: 'telegram' })}
+                        disabled={busy(d.student_id, 'telegram')}
+                      >
+                        {busy(d.student_id, 'telegram') ? '…' : 'Telegram'}
+                      </button>
+                      <button
+                        className="btn btn-secondary sm"
+                        onClick={() => remind.mutate({ studentId: d.student_id, channel: 'sms' })}
+                        disabled={smsOff || busy(d.student_id, 'sms')}
+                        title={smsOff ? "SMS o'chiq — Sozlamalar > SMS" : undefined}
+                      >
+                        {busy(d.student_id, 'sms') ? '…' : 'SMS'}
+                      </button>
+                    </div>
                     {note[d.student_id] && <div className="muted">{note[d.student_id]}</div>}
                   </td>
                 </tr>
@@ -175,32 +212,29 @@ export default function Debtors() {
 }
 
 /**
- * Ko'pchilikka eslatma — tanlanganlarga yoki butun ro'yxatga.
+ * Ko'pchilikka eslatma — bitta kanal orqali.
  *
- * Nega tasdiqlash oynasi: SMS pul turadi va bosgandan keyin qaytarib
- * bo'lmaydi. Yuborishdan OLDIN kimga ketishi va matn qanday ko'rinishi
- * aytiladi — "yuborildi" dan keyin emas.
+ * Nega tasdiqlash oynasi: bosgandan keyin qaytarib bo'lmaydi, SMS esa pul
+ * turadi. Kimga va nima ketishi yuborishdan OLDIN aytiladi.
  */
 function BulkRemind({
+  channel,
   studentIds,
+  preview,
   onClose,
 }: {
+  channel: Channel;
   studentIds: string[] | null;
+  preview?: SmsPreview;
   onClose: (sent: boolean) => void;
 }) {
   const [overdueOnly, setOverdueOnly] = useState(true);
   const [result, setResult] = useState<BulkResult | null>(null);
 
-  // Ataylab /debtors ostida: o'qituvchi ham ochadi, SMS sozlamalari esa
-  // faqat ma'muriyatga ko'rinadi.
-  const sms = useQuery({
-    queryKey: ['sms-preview'],
-    queryFn: async () => (await api.get<SmsPreview>('/debtors/sms-preview')).data,
-  });
-
   const send = useMutation({
     mutationFn: async () =>
       (await api.post('/debtors/remind-all', {
+        channel,
         ...(studentIds ? { studentIds } : { overdueOnly }),
       })).data as BulkResult,
     onSuccess: setResult,
@@ -208,23 +242,31 @@ function BulkRemind({
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const err = (send.error as any)?.response?.data?.error;
+  const who = studentIds ? `tanlangan ${studentIds.length} o'quvchiga` : 'hamma qarzdorga';
 
   return (
     <Modal
-      title={studentIds ? `Tanlangan ${studentIds.length} o'quvchiga eslatma` : 'Hamma qarzdorga eslatma'}
+      title={`${CHANNEL_LABEL[channel]} eslatmasi — ${who}`}
       onClose={() => onClose(result !== null)}
     >
       {result ? (
         <>
           <p className="save-note">✓ Navbatga qo'yildi</p>
           <ul className="muted">
-            <li>Telegram: <strong className="num">{result.telegram}</strong> ta (bepul)</li>
-            <li>SMS: <strong className="num">{result.sms}</strong> ta</li>
+            <li>
+              {CHANNEL_LABEL[channel]}:{' '}
+              <strong className="num">{result.telegram + result.sms}</strong> ta xabar
+            </li>
             {result.skipped > 0 && (
-              <li>{result.skipped} ta o'quvchi yaqinda eslatma olgan — takrorlanmadi</li>
+              <li>
+                {result.skipped} ta o'quvchi shu kanaldan yaqinda eslatma olgan — takrorlanmadi
+              </li>
             )}
             {result.noContact > 0 && (
-              <li>{result.noContact} ta o'quvchida xabar boradigan raqam yo'q</li>
+              <li>
+                {result.noContact} ta o'quvchiga bu kanal orqali yetib bormaydi
+                {channel === 'telegram' ? ' (botga ulanmagan)' : ' (raqami yo\'q)'}
+              </li>
             )}
           </ul>
           <p className="help">
@@ -242,7 +284,7 @@ function BulkRemind({
               Faqat siz belgilagan {studentIds.length} ta o'quvchiga ketadi.
             </p>
           ) : (
-            <label className="check-row">
+            <label className="check-row" style={{ marginTop: 0 }}>
               <input
                 type="checkbox" checked={overdueOnly}
                 onChange={(e) => setOverdueOnly(e.target.checked)}
@@ -256,32 +298,30 @@ function BulkRemind({
             </label>
           )}
 
-          {sms.data && (
-            <div className="field" style={{ marginTop: 14 }}>
-              <label>Xabar</label>
-              {sms.data.enabled ? (
-                <>
-                  <p className="help">
-                    Har bir qarzdorning barcha raqamlariga SMS ketadi — Telegramga
-                    ulanganiga ham. Har bir eslatma {sms.data.parts} ta SMS.
-                  </p>
-                  <p className="sms-preview">{sms.data.example}</p>
-                </>
-              ) : (
+          <div className="field" style={{ marginTop: 14 }}>
+            <label>{channel === 'sms' ? 'SMS matni' : 'Telegram xabari'}</label>
+            {channel === 'sms' ? (
+              <>
                 <p className="help">
-                  SMS o'chiq — xabar faqat Telegram botga ulangan ota-onalarga boradi.
-                  Yoqish: Sozlamalar &gt; SMS (admin).
+                  Barcha raqamlarga ketadi — Telegramga ulanganiga ham. Har bir
+                  eslatma {preview?.parts ?? 1} ta SMS, ya'ni pullik.
                 </p>
-              )}
-            </div>
-          )}
+                {preview && <p className="sms-preview">{preview.example}</p>}
+              </>
+            ) : (
+              <p className="help">
+                Bepul, lekin faqat botga ULANGAN va farzandini tasdiqlagan
+                ota-onalarga yetadi. Ulanmaganlarga SMS kerak bo'ladi.
+              </p>
+            )}
+          </div>
 
           {err && <p className="hint">{err}</p>}
 
           <div className="actions">
             <button className="btn btn-ghost" onClick={() => onClose(false)}>Bekor qilish</button>
             <button className="btn btn-primary" onClick={() => send.mutate()} disabled={send.isPending}>
-              {send.isPending ? 'Yuborilmoqda…' : 'Yuborish'}
+              {send.isPending ? 'Yuborilmoqda…' : `${CHANNEL_LABEL[channel]} yuborish`}
             </button>
           </div>
         </>

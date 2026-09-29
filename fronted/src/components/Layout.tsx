@@ -68,6 +68,91 @@ function ThemeToggle() {
   );
 }
 
+interface Brand { id: string; name: string; logo_url: string | null }
+
+/**
+ * Joriy maktabning nomi va logotipi.
+ *
+ * Superadmin uchun tanlangan maktab, qolganlar uchun o'zining maktabi.
+ * Maktab almashganda so'rov kaliti o'zgaradi — eski nom ekranda qolib
+ * ketmaydi.
+ */
+function useBrand() {
+  const { user } = useAuth();
+  const { schoolId } = useSchool();
+  const active = user?.role === 'superadmin' ? schoolId : user?.schoolId ?? null;
+
+  return useQuery({
+    queryKey: ['school-brand', active],
+    enabled: !!active,
+    // Nom va logotip kamdan-kam o'zgaradi — har sahifada qayta so'ralmasin.
+    staleTime: 5 * 60_000,
+    queryFn: async () => (await api.get<Brand>('/school/brand')).data,
+  });
+}
+
+/**
+ * Logotip o'rnidagi harf.
+ *
+ * Odamning bosh harflaridan (`initials`) farq qiladi: maktab nomi ko'pincha
+ * qo'shtirnoq bilan boshlanadi — "Afsona" xususiy maktabi. Harf bo'lmagan
+ * belgilar tashlanmasa, kvadratda tirnoq turardi. Bitta harf olinadi: ikkinchi
+ * so'z odatda "xususiy" yoki "maktabi" bo'lib, hech narsa qo'shmaydi.
+ */
+function brandMark(name: string): string {
+  const letters = name.replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  return (letters[0] ?? '?').toUpperCase();
+}
+
+/**
+ * Logotip yoki uning o'rnini bosuvchi harf.
+ *
+ * Nega fallback kerak: maktablarning ko'pchiligi logotip yuklamaydi, bo'sh
+ * to'rtburchak esa "rasm yuklanmadi" degan taassurot qoldiradi.
+ */
+function BrandMark({ brand, className }: { brand: Brand; className: string }) {
+  return brand.logo_url
+    ? <img className={className} src={brand.logo_url} alt="" />
+    : <span className={`${className} mark-text`} aria-hidden>{brandMark(brand.name)}</span>;
+}
+
+/**
+ * Yon menyu sarlavhasi: MAKTAB nomi birinchi, EduLive esa pastida mayda.
+ *
+ * Nega shunday tartib: foydalanuvchi uchun bu "EduLive" emas, o'z maktabining
+ * tizimi. Platforma nomi esa qaysi mahsulot ekanini eslatib turadi, xolos.
+ */
+function SidebarBrand() {
+  const brand = useBrand();
+
+  if (!brand.data) return <div className="logo">EduLive</div>;
+
+  return (
+    <div className="brand">
+      <BrandMark brand={brand.data} className="brand-logo" />
+      <div className="brand-text">
+        <span className="brand-school" title={brand.data.name}>{brand.data.name}</span>
+        <span className="brand-platform">EduLive</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Telefonda yon menyu yashirin — maktab nomi yuqori panelda ko'rinadi.
+ * Kompyuterda CSS uni yashiradi: yon menyudagisi bilan takrorlanmasin.
+ */
+function TopbarBrand() {
+  const brand = useBrand();
+  if (!brand.data) return null;
+  return (
+    <div className="topbar-brand">
+      <BrandMark brand={brand.data} className="brand-logo sm" />
+      <span className="brand-school">{brand.data.name}</span>
+    </div>
+  );
+}
+
 /**
  * Superadmin qaysi maktab ichida ekanini doim ko'rib tursin — aks holda
  * boshqa maktabning ma'lumotini o'zinikidek o'qib qolish oson.
@@ -156,7 +241,7 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="logo">EduLive</div>
+        <SidebarBrand />
         <nav className="sidebar-nav">
           <NavItems items={mainNav} />
         </nav>
@@ -173,6 +258,7 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
 
         <header className="topbar">
+          <TopbarBrand />
           <div className="who">
             <strong>{user?.fullName}</strong>
             <span className="muted role">{roleLabel(user?.role)}</span>

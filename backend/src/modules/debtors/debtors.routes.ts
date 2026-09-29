@@ -10,12 +10,27 @@ import { audit } from '../audit/audit.service.js';
 import { teacherClassIds } from '../classes/classes.service.js';
 import { dispatchQueued } from '../notifications/notifications.service.js';
 import {
+  type Channel,
   debtors as debtList,
   messagingFor,
   previewSms,
   queueReminder,
   recentlyReminded,
 } from './debtors.service.js';
+
+/** Kanal ataylab MAJBURIY: "qaysi biri ketdi?" degan savol qolmasin. */
+const channelSchema = z.enum(['telegram', 'sms']);
+
+/**
+ * Kanal yuborishga tayyormi. SMS uchun ikki shart bor va ikkalasi ham
+ * maktabning qo'lida — shuning uchun xato matni nima qilish kerakligini
+ * aytadi, shunchaki "bo'lmadi" demaydi.
+ */
+function assertChannelReady(channel: Channel, smsEnabled: boolean): void {
+  if (channel === 'sms' && !smsEnabled) {
+    throw badRequest("SMS o'chiq. Sozlamalar > SMS bo'limidan yoqing.");
+  }
+}
 
 export const debtorsRoutes = Router();
 // O'qituvchi ham kiradi, lekin FAQAT o'z sinfiga — `scope()` qarang.
@@ -100,14 +115,21 @@ debtorsRoutes.get(
   }),
 );
 
-// Qarz eslatmasi. Yuborish emas — NAVBATGA qo'yish: fon ishchisi jo'natadi.
-//
-// Telegram botga ulanganlarga Telegramdan ketadi (bepul). SMS esa — yoqilgan
-// bo'lsa — BARCHA raqamlarga, ulanganiga ham: to'lov eslatmasi ko'rilmay
-// qolmasligi kerak.
+/**
+ * Bitta o'quvchiga eslatma — BITTA kanal orqali.
+ *
+ * Yuborish emas, NAVBATGA qo'yish: fon ishchisi jo'natadi.
+ *
+ * Kanal so'rovda ko'rsatiladi: Telegram bepul va faqat botga ulanganlarga
+ * yetadi, SMS pullik va barcha raqamlarga ketadi. Ma'mur qaysi birini
+ * yuborayotganini bilib turishi kerak — shuning uchun bitta tugma
+ * ikkalasini birdan jo'natmaydi.
+ */
 debtorsRoutes.post(
   '/:studentId/remind',
   ah(async (req, res) => {
+    const input = parse(z.object({ channel: channelSchema }), req.body ?? {});
+
     const [d] = await debtList(pool, req.schoolId!, {
       studentId: req.params.studentId,
       classIds: await scope(req),
@@ -116,18 +138,24 @@ debtorsRoutes.post(
     // borligi ham aytilmaydi.
     if (!d) throw badRequest("Bu o'quvchida qarz yo'q");
 
-    const already = await recentlyReminded(pool, req.schoolId!, [d.student_id]);
+    const m = await messagingFor(pool, req.schoolId!);
+    assertChannelReady(input.channel, m.smsEnabled);
+
+    const already = await recentlyReminded(pool, req.schoolId!, [d.student_id], input.channel);
     if (already.has(d.student_id)) {
-      throw badRequest("Bu o'quvchi bo'yicha eslatma yaqinda yuborilgan");
+      throw badRequest(
+        input.channel === 'sms'
+          ? "Bu o'quvchiga SMS yaqinda yuborilgan"
+          : "Bu o'quvchiga Telegram xabari yaqinda yuborilgan",
+      );
     }
 
-    const m = await messagingFor(pool, req.schoolId!);
-    const queued = await queueReminder(pool, req.schoolId!, d, m);
+    const queued = await queueReminder(pool, req.schoolId!, d, m, input.channel);
     if (!queued.telegram && !queued.sms) {
       throw badRequest(
-        m.smsEnabled
-          ? "Xabar yuborilmadi: o'quvchiga mas'ul shaxs raqami biriktirilmagan yoki raqamda xabar o'chirilgan"
-          : "Xabar yuborilmadi: ota-ona Telegram botga ulanmagan. SMS ni Sozlamalardan yoqing.",
+        input.channel === 'sms'
+          ? "SMS yuborilmadi: o'quvchiga telefon raqami biriktirilmagan yoki raqamda xabar o'chirilgan"
+          : "Telegram xabari yuborilmadi: ota-onaning hech bir raqami botga ulanmagan",
       );
     }
 
@@ -135,12 +163,12 @@ debtorsRoutes.post(
       action: 'debt.remind',
       entity: 'student',
       entityId: d.student_id,
-      after: { outstanding: d.outstanding, ...queued },
+      after: { outstanding: d.outstanding, channel: input.channel, ...queued },
     });
 
     // Foydalanuvchi natijani darhol ko'rishi kerak — 15 soniya kutmasin.
     await dispatchQueued(10);
-    res.json({ queued: queued.telegram + queued.sms, ...queued });
+    res.json({ queued: queued.telegram + queued.sms, channel: input.channel, ...queued });
   }),
 );
 
@@ -158,6 +186,7 @@ debtorsRoutes.post(
   ah(async (req, res) => {
     const input = parse(
       z.object({
+        channel: channelSchema,
         // Bo'sh bo'lsa — ro'yxatdagi hammaga. To'ldirilgan bo'lsa faqat
         // tanlanganlarga: ma'mur kimga yuborishini o'zi hal qiladi.
         studentIds: z.array(z.string().uuid()).max(500).optional(),
@@ -178,21 +207,26 @@ debtorsRoutes.post(
       // jimgina tushib qolardi va ma'mur buni bilmasdi.
       limit: input.studentIds?.length ?? input.limit,
     });
-    const skip = await recentlyReminded(pool, req.schoolId!, list.map((d) => d.student_id));
     const m = await messagingFor(pool, req.schoolId!);
+    assertChannelReady(input.channel, m.smsEnabled);
+
+    const skip = await recentlyReminded(
+      pool, req.schoolId!, list.map((d) => d.student_id), input.channel,
+    );
 
     let telegram = 0;
     let sms = 0;
     let noContact = 0;
     for (const d of list) {
       if (skip.has(d.student_id)) continue;
-      const q = await queueReminder(pool, req.schoolId!, d, m);
+      const q = await queueReminder(pool, req.schoolId!, d, m, input.channel);
       telegram += q.telegram;
       sms += q.sms;
       if (!q.telegram && !q.sms) noContact += 1;
     }
 
     const result = {
+      channel: input.channel,
       students: list.length,
       skipped: skip.size,
       noContact,

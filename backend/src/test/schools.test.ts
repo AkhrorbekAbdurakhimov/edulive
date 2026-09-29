@@ -200,3 +200,25 @@ test("sinf o'chirish: tarixi bor sinf o'chmaydi (davomat kaskad bilan ketmasin)"
   assert.equal(del.status, 409, 'tarixi bor sinf o\'chirilmasligi kerak');
   assert.match(del.body.error, /tarix/);
 });
+
+/**
+ * Maktab brendi (nomi + logotipi) interfeys sarlavhasida turadi, shuning
+ * uchun uni HAR BIR xodim o'qiy olishi kerak — lekin sozlamalarni emas.
+ */
+test("brend har rolga ochiq, to'liq maktab ma'lumoti esa yopiq", async () => {
+  for (const [who, token] of [
+    ['admin', school.adminToken],
+    ['menejer', school.managerToken],
+    ["o'qituvchi", school.teacherToken],
+  ] as const) {
+    const brand = await api('GET', '/school/brand', undefined, token);
+    assert.equal(brand.status, 200, `${who} brendni ko'ra olishi kerak`);
+    assert.equal(brand.body.id, school.schoolId);
+    assert.ok(brand.body.name, 'nom qaytishi kerak');
+    // Sozlamalar (to'lov muddati, SMS matni) brendga qo'shilmasin.
+    assert.equal(brand.body.settings, undefined);
+  }
+
+  const full = await api('GET', '/school', undefined, school.teacherToken);
+  assert.equal(full.status, 403, "o'qituvchiga to'liq maktab ma'lumoti yopiq");
+});

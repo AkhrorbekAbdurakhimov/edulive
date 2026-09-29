@@ -132,13 +132,21 @@ qo'shildi: Eskiz.uz orqali SMS (`notifications.channel = 'sms'`).
   qilingan edi (Telegram bo'lsa SMS yo'q). Bu noto'g'ri: to'lov eslatmasi
   O'QILISHI kerak, botdagi xabar esa yuzlab chat orasida ko'rinmay ketadi.
   Endi SMS to'lamagan o'quvchining BARCHA raqamlariga ketadi — Telegramga
-  ulanganiga ham. Kanal tanlash emas, kanal qo'shish. Yagona istisno — raqamda
-  xabar o'chirilgan bo'lsa (`parent_phones.notify_enabled = false`).
+  ulanganiga ham: kim SMS olishi Telegram holatiga bog'liq emas. Yagona
+  istisno — raqamda xabar o'chirilgan bo'lsa
+  (`parent_phones.notify_enabled = false`).
 - **Nega avtomatik jo'natish yo'q:** eslatma har doim odam bosgan tugmadan
   boshlanadi (`POST /debtors/:id/remind` yoki `/debtors/remind-all`).
   Rejalashtiruvchida (`scheduler.ts`) SMS yo'q. Sabab: pul sarflaydigan va
   oilaga boradigan xabarni kim va qachon yuborganini aniq bir odam javobgar
   bo'lishi kerak — `audit_log` da kim bosgani yozilib qoladi.
+- **Nega kanallar ALOHIDA tugma:** avval bitta tugma ikkalasini birdan
+  yuborardi. Bu noto'g'ri: Telegram bepul, SMS pullik. Bitta bosishda qancha
+  pul ketganini ma'mur bilmasdi va "qaysi biri ketdi?" degan savolga javob
+  qolmasdi. Endi `channel` so'rovda MAJBURIY (`telegram` yoki `sms`),
+  interfeysda esa har kanalning o'z tugmasi bor. Takrorlanmaslik ham kanal
+  bo'yicha hisoblanadi — Telegram yuborilgani SMS ni bloklamaydi, chunki
+  bu ikki alohida qaror.
 - **Nega tanlab yuborish:** `remind-all` `studentIds` ni qabul qiladi.
   Ro'yxatdan kerakligini belgilab yuborish — amalda eng ko'p kerak bo'ladigan
   holat (masalan, bugun qo'ng'iroq qilinmaganlarga).

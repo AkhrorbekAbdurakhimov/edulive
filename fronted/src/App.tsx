@@ -31,7 +31,7 @@ export default function App() {
                 <Route path="/schools" element={<SuperadminOnly><Schools /></SuperadminOnly>} />
                 {/* Sozlamalar hamma rolga ochiq va maktab konteksti talab qilmaydi. */}
                 <Route path="/settings" element={<Settings />} />
-                <Route path="/dashboard" element={<NeedsSchool><Dashboard /></NeedsSchool>} />
+                <Route path="/dashboard" element={<NeedsSchool><NotForTeacher><Dashboard /></NotForTeacher></NeedsSchool>} />
                 <Route path="/classes" element={<NeedsSchool><Classes /></NeedsSchool>} />
                 <Route path="/students" element={<NeedsSchool><Students /></NeedsSchool>} />
                 <Route path="/students/:id" element={<NeedsSchool><StudentCard /></NeedsSchool>} />
@@ -53,12 +53,27 @@ export default function App() {
   );
 }
 
-/** Superadmin maktab tanlamaguncha uy sahifasi — maktablar ro'yxati. */
+/**
+ * Kim qayerdan boshlaydi.
+ *
+ * Bitta joyda turadi, chunki kirish (`Login`) va manzilsiz ochilish ikkalasi
+ * ham shu qarorga tayanadi. Ilgari hamma `/dashboard` ga tushardi va
+ * o'qituvchi darhol "Ruxsat yo'q" xatosini ko'rardi — backend boshqaruv
+ * panelini unga bermaydi.
+ */
 function Home() {
   const { user } = useAuth();
   const { schoolId } = useSchool();
-  const toSchools = user?.role === 'superadmin' && !schoolId;
-  return <Navigate to={toSchools ? '/schools' : '/dashboard'} replace />;
+  if (user?.role === 'superadmin' && !schoolId) return <Navigate to="/schools" replace />;
+  if (user?.role === 'teacher') return <Navigate to="/debtors" replace />;
+  return <Navigate to="/dashboard" replace />;
+}
+
+/** Boshqaruv paneli o'qituvchiga yopiq — backend ham unga 403 beradi. */
+function NotForTeacher({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (user?.role === 'teacher') return <Navigate to="/debtors" replace />;
+  return <>{children}</>;
 }
 
 function SuperadminOnly({ children }: { children: React.ReactNode }) {

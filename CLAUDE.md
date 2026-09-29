@@ -150,7 +150,8 @@ Kelajakka moslangan joylar (migratsiya kerak bo'lmasligi uchun):
 - **SMS (Eskiz.uz).** Pullik kanal. Qarz eslatmasi to'lamagan o'quvchining
   **barcha** raqamlariga ketadi — Telegramga ulanganiga ham. Sukut bo'yicha
   **o'chiq** (`settings.sms_debt_enabled`). Avtomatik jo'natish yo'q: faqat
-  tugma orqali (admin, menejer va o'z sinfi bo'yicha o'qituvchi). Matn `settings.sms_debt_template` da va Eskiz
+  tugma orqali (admin, menejer va o'z sinfi bo'yicha o'qituvchi). Telegram va SMS
+  — ALOHIDA amal: `channel` majburiy, bitta tugma ikkalasini yubormaydi. Matn `settings.sms_debt_template` da va Eskiz
   kabinetida **moderatsiyadan o'tgan** bo'lishi shart. Lotin bo'lmagan bitta
   belgi narxni ikki barobar oshiradi — `smsParts()` bilan tekshiring. Boshqa
   turdagi xabarlarni (davomat, to'lov) SMS ga o'tkazmang: kuniga yuzlab bo'ladi.
